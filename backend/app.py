@@ -15,7 +15,7 @@ CORS(app)
 print("📁 Using database file:", os.path.abspath("db.sqlite"))
 db.init_app(app)
 
-# Logging
+# Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -64,40 +64,28 @@ def init_data():
     with app.app_context():
         if not User.query.first():
             try:
-                # Create user
                 user = User(username='JohnDoe22', email='john@email.com')
                 user.set_password('password123')
                 db.session.add(user)
                 db.session.commit()
 
-                # Create module
-                module = Module(title='SQL JOINs', category='SQL', description='Master INNER/LEFT JOINs...', duration=45, order=1)
+                module = Module(title='SQL JOINs', category='SQL', description='Master INNER/LEFT JOINs...', duration=45, order=3)
                 db.session.add(module)
                 db.session.commit()
 
-                # Create quiz
                 quiz = Quiz(title='SQL JOINs Quiz', description='What JOIN combines all records?')
                 db.session.add(quiz)
                 db.session.commit()
 
-                # Create user progress
-                progress = UserProgress(user_id=user.id, module_id=module.id, status='InProgress', streak_count=5, score=45)
-                db.session.add(progress)
-
-                # Create forum post
+                progress = UserProgress(user_id=user.id, module_id=module.id, status='InProgress', streak_count=5, score=0)
                 post = ForumPost(user_id=user.id, thread_id=None, content='Need JOIN syntax help!')
-                db.session.add(post)
-
-                # Create badge
                 badge = Badge(name='SQL Explorer', description='Complete 3 SQL modules', icon='sql_icon.png', criteria={'mods': 3})
-                db.session.add(badge)
+                db.session.add_all([progress, post, badge])
                 db.session.commit()
 
-                # Assign badge to user
-                user_badge = UserBadge(user_id=user.id, badge_id=badge.id, level=1)
+                user_badge = UserBadge(user_id=user.id, badge_id=badge.id)
                 db.session.add(user_badge)
                 db.session.commit()
-
                 return jsonify({'status': 'Sample data added'})
             except Exception as e:
                 db.session.rollback()
@@ -130,49 +118,7 @@ def login():
     except Exception as e:
         return jsonify({'message': 'Server error', 'error': str(e)}), 500
 
-# Dashboard endpoint
-@app.route('/dashboard-data/<int:user_id>', methods=['GET'])
-def dashboard_data(user_id):
-    try:
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'message': 'User not found'}), 404
-
-        # User progress
-        progress_records = UserProgress.query.filter_by(user_id=user.id).all()
-        progress_data = []
-        for pr in progress_records:
-            module_name = pr.module.title if pr.module else "Unknown Module"
-            progress_data.append({
-                'module': module_name,
-                'status': pr.status,
-                'score': pr.score or 0,
-                'streak': pr.streak_count
-            })
-
-        # User badges
-        user_badges = UserBadge.query.filter_by(user_id=user.id).all()
-        badges_data = []
-        for ub in user_badges:
-            badge = Badge.query.get(ub.badge_id)
-            if badge:
-                badges_data.append({
-                    'name': badge.name,
-                    'description': badge.description,
-                    'icon': badge.icon or 'default.png',
-                    'level': ub.level
-                })
-
-        return jsonify({
-            'user': {'id': user.id, 'username': user.username},
-            'progress': progress_data,
-            'badges': badges_data
-        })
-
-    except Exception as e:
-        return jsonify({'message': 'Error fetching dashboard data', 'error': str(e)}), 500
-
-# Forum endpoint
+# Basic forum endpoint
 @app.route('/forum', methods=['GET', 'POST'])
 def forum():
     if request.method == 'POST':
@@ -193,6 +139,56 @@ def forum():
 def get_badges():
     badges = Badge.query.all()
     return jsonify({'badges': [{'id': b.id, 'name': b.name, 'description': b.description} for b in badges]})
+# Quiz endpoint
+@app.route('/quiz/<int:quiz_id>', methods=['GET', 'POST'])
+def quiz(quiz_id):
+    user_id = 1  # Replace with actual authenticated user ID in production
+    quiz = Quiz.query.get_or_404(quiz_id)
+
+    # Get or create progress record for this user and quiz
+    progress = UserProgress.query.filter_by(user_id=user_id, quiz_id=quiz.id).first()
+    if not progress:
+        progress = UserProgress(user_id=user_id, quiz_id=quiz.id, module_id=None, status='Not Started', score=0, streak_count=0)
+        db.session.add(progress)
+        db.session.commit()
+
+    if request.method == 'POST':
+        data = request.get_json()
+        answer = data.get('answer')
+        if not answer:
+            return jsonify({'message': 'Answer is required'}), 400
+
+        # Example logic: correct answer is stored in quiz.description (or extend model)
+        correct_answer = getattr(quiz, 'correct_answer', None)
+        if correct_answer and answer.strip().lower() == correct_answer.strip().lower():
+            progress.score = (progress.score or 0) + 10  # increment score
+            progress.streak_count += 1
+            progress.status = 'Completed'
+            db.session.commit()
+            return jsonify({
+                'message': 'Correct answer!',
+                'score': progress.score,
+                'streak': progress.streak_count
+            })
+        else:
+            progress.streak_count = max(0, progress.streak_count - 1)
+            progress.status = 'In Progress'
+            db.session.commit()
+            return jsonify({
+                'message': 'Incorrect answer',
+                'score': progress.score,
+                'streak': progress.streak_count
+            })
+
+    # GET request returns quiz info
+    return jsonify({
+        'quiz_id': quiz.id,
+        'title': quiz.title,
+        'description': quiz.description,
+        'status': progress.status,
+        'score': progress.score,
+        'streak': progress.streak_count
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f5f7fa;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.sidebar-col {
+  background-color: #1e293b;
+  min-height: 100vh;
+  color: white;
+}
+
+.navbar-custom {
+  background-color: #0f172a;
+  color: white;
+}
+
+.card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.dashboard-container {
+  padding: 30px;
+}
+
+.quiz-question {
+  font-weight: bold;
+}
+
+.forum-post {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.8s ease-in-out;
+}

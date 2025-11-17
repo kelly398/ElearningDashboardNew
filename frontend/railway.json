@@ -3,7 +3,11 @@
     "builder": "nixpacks",
     "env": {
       "NODE_ENV": "production"
-    }
+    },
+    "build": {
+  "env": { "PYTHON_VERSION": "3.11" }
+}
+
   },
   "deploy": {
     "healthcheckPath": "/",

@@ -706,6 +706,11 @@ def get_badges():
     return jsonify({'badges': [{'id': b.id, 'name': b.name, 'description': b.description} for b in badges]})
 
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'ok'}), 200
+
+
 @app.route('/dashboard/<int:user_id>', methods=['GET'])
 def get_user_dashboard(user_id):
     user = User.query.get_or_404(user_id)

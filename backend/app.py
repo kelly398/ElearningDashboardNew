@@ -4,20 +4,256 @@ import os
 import time
 import logging
 from flask_cors import CORS
+from sqlalchemy import func
 from extensions import db
-from models import User, Module, Quiz, UserProgress, ForumPost, Badge, UserBadge
+from models import (
+    User,
+    Module,
+    Quiz,
+    Question,
+    UserProgress,
+    ForumPost,
+    Badge,
+    UserBadge,
+)
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'db.sqlite')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app)
-print("📁 Using database file:", os.path.abspath("db.sqlite"))
+print("Using database file:", os.path.abspath("db.sqlite"))
 db.init_app(app)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+POINTS_PER_CORRECT = 20
+
+QUESTION_POOL_SEED = [
+    {
+        'title': 'Cloud Computing',
+        'description': 'Assess core cloud-computing concepts.',
+        'topic': 'Cloud Computing',
+        'questions': [
+            {
+                'question': 'Which of the following is NOT an IaaS provider?',
+                'options': ['AWS EC2', 'Azure VM', 'Google Docs', 'DigitalOcean'],
+                'answer': 'Google Docs',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What does PaaS stand for?',
+                'options': [
+                    'Product as a Service',
+                    'Platform as a Service',
+                    'Protocol as a Service',
+                    'Power as a Service',
+                ],
+                'answer': 'Platform as a Service',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which AWS service is considered serverless compute?',
+                'options': ['EC2', 'S3', 'AWS Lambda', 'RDS'],
+                'answer': 'AWS Lambda',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What does VPC stand for?',
+                'options': [
+                    'Virtual Public Cloud',
+                    'Virtual Private Cloud',
+                    'Very Private Container',
+                    'Visual Processing Center',
+                ],
+                'answer': 'Virtual Private Cloud',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which AWS storage option is object storage?',
+                'options': ['EBS', 'EFS', 'S3', 'RDS'],
+                'answer': 'S3',
+                'time_limit': 45,
+            },
+        ],
+    },
+    {
+        'title': 'Web Design with JavaScript',
+        'description': 'JavaScript and front-end fundamentals.',
+        'topic': 'Web Design with JavaScript',
+        'questions': [
+            {
+                'question': 'What does DOM stand for?',
+                'options': [
+                    'Data Object Model',
+                    'Document Object Model',
+                    'Dynamic Object Method',
+                    'Display Object Manager',
+                ],
+                'answer': 'Document Object Model',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which of the following is NOT a JavaScript framework?',
+                'options': ['React', 'Vue', 'Angular', 'Photoshop'],
+                'answer': 'Photoshop',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What does the === operator do in JavaScript?',
+                'options': [
+                    'Assignment',
+                    'Loose equality',
+                    'Strict equality',
+                    'Type conversion',
+                ],
+                'answer': 'Strict equality',
+                'time_limit': 45,
+            },
+            {
+                'question': 'In an object method, what does this refer to?',
+                'options': ['Global object', 'The function', 'The object', 'undefined'],
+                'answer': 'The object',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What is event bubbling?',
+                'options': [
+                    'Events travel down the DOM tree',
+                    'Events propagate up the DOM tree',
+                    'Events stop immediately',
+                    'Events loop forever',
+                ],
+                'answer': 'Events propagate up the DOM tree',
+                'time_limit': 45,
+            },
+        ],
+    },
+    {
+        'title': 'Data Structures',
+        'description': 'Core data structure knowledge check.',
+        'topic': 'Data Structures',
+        'questions': [
+            {
+                'question': 'Which data structure uses the LIFO principle?',
+                'options': ['Queue', 'Array', 'Stack', 'Tree'],
+                'answer': 'Stack',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which data structure uses the FIFO principle?',
+                'options': ['Stack', 'Queue', 'List', 'Graph'],
+                'answer': 'Queue',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which structure typically offers O(1) average lookup time?',
+                'options': ['Array', 'Linked List', 'Hash Table', 'Binary Tree'],
+                'answer': 'Hash Table',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which structure is best suited for contiguous sorting?',
+                'options': ['Linked List', 'Array', 'Stack', 'Queue'],
+                'answer': 'Array',
+                'time_limit': 45,
+            },
+            {
+                'question': 'Which approach is used for graph traversal?',
+                'options': ['LIFO', 'FIFO', 'BFS/DFS', 'Hashing'],
+                'answer': 'BFS/DFS',
+                'time_limit': 45,
+            },
+        ],
+    },
+    {
+        'title': 'Deep Learning',
+        'description': 'Deep learning fundamentals and terminology.',
+        'topic': 'Deep Learning',
+        'questions': [
+            {
+                'question': 'What is a neuron in a neural network?',
+                'options': ['Layer', 'Basic unit', 'Dataset', 'GPU'],
+                'answer': 'Basic unit',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What does backpropagation do?',
+                'options': [
+                    'Data collection',
+                    'Model saving',
+                    'Optimizes weights via gradient descent',
+                    'Visualization',
+                ],
+                'answer': 'Optimizes weights via gradient descent',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What is overfitting?',
+                'options': [
+                    'Too good on training data',
+                    'Too bad on test data',
+                    'No training occurred',
+                    'No data provided',
+                ],
+                'answer': 'Too good on training data',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What are CNNs primarily used for?',
+                'options': ['Text', 'Audio', 'Images', 'Time series'],
+                'answer': 'Images',
+                'time_limit': 45,
+            },
+            {
+                'question': 'What is ReLU?',
+                'options': ['Optimizer', 'Loss function', 'Activation function', 'Layer'],
+                'answer': 'Activation function',
+                'time_limit': 45,
+            },
+        ],
+    },
+]
+
+
+def seed_question_pool(force=False):
+    """Seed the quiz question pool so every topic has questions available."""
+    with app.app_context():
+        if Question.query.first() and not force:
+            return
+
+        if force:
+            Question.query.delete()
+            db.session.commit()
+
+        for quiz_data in QUESTION_POOL_SEED:
+            quiz = Quiz.query.filter_by(title=quiz_data['title']).first()
+            if not quiz:
+                quiz = Quiz(
+                    title=quiz_data['title'],
+                    description=quiz_data.get('description'),
+                )
+                db.session.add(quiz)
+                db.session.flush()
+
+            existing_questions = {q.question_text for q in quiz.questions}
+            for question_data in quiz_data['questions']:
+                if question_data['question'] in existing_questions and not force:
+                    continue
+                question_record = Question(
+                    quiz_id=quiz.id,
+                    topic=quiz_data['topic'],
+                    question_text=question_data['question'],
+                    options=question_data['options'],
+                    correct_answer=question_data['answer'],
+                    time_limit_seconds=question_data.get('time_limit', 45),
+                )
+                db.session.add(question_record)
+
+        db.session.commit()
+        logger.debug('Question pool seeded with %d quizzes', len(QUESTION_POOL_SEED))
 
 # Ensure DB file exists and is writable
 if not os.path.exists('db.sqlite'):
@@ -41,6 +277,7 @@ def create_tables_on_startup():
 
 try:
     create_tables_on_startup()
+    seed_question_pool()
 except Exception as e:
     logger.error(f"Startup failed: {str(e)}")
     raise
@@ -67,6 +304,15 @@ def init_data():
                 user = User(username='JohnDoe22', email='john@email.com')
                 user.set_password('password123')
                 db.session.add(user)
+                db.session.commit()
+                
+                user2 = User(username='Sumayah', email='sumayahkh@hotmail.com')
+                user2.set_password('123456')
+                db.session.add(user2)
+                db.session.commit()
+                
+                user2.set_password('123456')
+                db.session.add(user2)
                 db.session.commit()
 
                 module = Module(title='SQL JOINs', category='SQL', description='Master INNER/LEFT JOINs...', duration=45, order=3)
@@ -139,6 +385,125 @@ def forum():
 def get_badges():
     badges = Badge.query.all()
     return jsonify({'badges': [{'id': b.id, 'name': b.name, 'description': b.description} for b in badges]})
+
+
+@app.route('/quizzes', methods=['GET'])
+def list_quizzes():
+    quizzes = Quiz.query.all()
+    response = []
+    for quiz in quizzes:
+        response.append({
+            'id': quiz.id,
+            'title': quiz.title,
+            'description': quiz.description,
+            'question_count': len(quiz.questions),
+            'topic': quiz.questions[0].topic if quiz.questions else None,
+        })
+    return jsonify({'quizzes': response})
+
+
+@app.route('/quiz/<int:quiz_id>/questions', methods=['GET'])
+def get_quiz_questions(quiz_id):
+    limit = request.args.get('limit', default=5, type=int)
+    topic = request.args.get('topic')
+    quiz = Quiz.query.get_or_404(quiz_id)
+
+    limit = 5 if not limit or limit <= 0 else min(limit, 20)
+    query = Question.query.filter_by(quiz_id=quiz.id)
+    if topic:
+        query = query.filter(Question.topic == topic)
+
+    questions = query.order_by(func.random()).limit(limit).all()
+    if not questions:
+        return jsonify({'message': 'No questions available for this quiz'}), 404
+
+    question_payload = []
+    for question in questions:
+        question_payload.append({
+            'id': question.id,
+            'topic': question.topic,
+            'question': question.question_text,
+            'options': question.options,
+            'time_limit_seconds': question.time_limit_seconds,
+        })
+
+    return jsonify({
+        'quiz': {
+            'id': quiz.id,
+            'title': quiz.title,
+            'description': quiz.description,
+            'question_count': len(quiz.questions),
+        },
+        'questions': question_payload,
+    })
+
+
+@app.route('/quiz/<int:quiz_id>/answer', methods=['POST'])
+def submit_quiz_answer(quiz_id):
+    data = request.get_json() or {}
+    question_id = data.get('question_id')
+    answer = data.get('answer')
+    time_taken = data.get('time_taken')
+    time_expired = data.get('time_expired', False)
+
+    if not question_id:
+        return jsonify({'message': 'question_id is required'}), 400
+
+    quiz = Quiz.query.get_or_404(quiz_id)
+    question = Question.query.filter_by(id=question_id, quiz_id=quiz.id).first()
+    if not question:
+        return jsonify({'message': 'Question not found for this quiz'}), 404
+
+    allowed_time = question.time_limit_seconds or 0
+    if not time_expired and time_taken is not None and allowed_time and time_taken > allowed_time:
+        time_expired = True
+
+    user_id = 1  # Replace with authenticated user
+    progress = UserProgress.query.filter_by(user_id=user_id, quiz_id=quiz.id).first()
+    if not progress:
+        progress = UserProgress(
+            user_id=user_id,
+            quiz_id=quiz.id,
+            module_id=None,
+            status='Not Started',
+            score=0,
+            streak_count=0,
+        )
+        db.session.add(progress)
+        db.session.commit()
+
+    answered_correctly = False
+    message = ''
+
+    if time_expired:
+        message = 'Time expired for this question.'
+    elif not answer:
+        return jsonify({'message': 'Answer is required'}), 400
+    else:
+        answered_correctly = answer.strip().lower() == question.correct_answer.strip().lower()
+        message = 'Correct answer!' if answered_correctly else 'Incorrect answer.'
+
+    if answered_correctly:
+        progress.score = (progress.score or 0) + POINTS_PER_CORRECT
+        progress.streak_count = (progress.streak_count or 0) + 1
+        progress.status = 'Completed' if (progress.score or 0) >= 100 else 'In Progress'
+    else:
+        progress.streak_count = max(0, (progress.streak_count or 0) - 1)
+        if progress.status == 'Not Started':
+            progress.status = 'In Progress'
+
+    db.session.commit()
+
+    return jsonify({
+        'correct': answered_correctly,
+        'message': message,
+        'correct_answer': question.correct_answer,
+        'score_delta': POINTS_PER_CORRECT if answered_correctly else 0,
+        'total_score': progress.score or 0,
+        'streak': progress.streak_count,
+        'time_limit_seconds': question.time_limit_seconds,
+        'timed_out': time_expired,
+    })
 # Quiz endpoint
 @app.route('/quiz/<int:quiz_id>', methods=['GET', 'POST'])
 def quiz(quiz_id):
@@ -186,8 +551,9 @@ def quiz(quiz_id):
         'title': quiz.title,
         'description': quiz.description,
         'status': progress.status,
-        'score': progress.score,
-        'streak': progress.streak_count
+        'score': progress.score or 0,
+        'streak': progress.streak_count,
+        'question_pool_size': len(quiz.questions),
     })
 
 if __name__ == '__main__':

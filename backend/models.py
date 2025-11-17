@@ -59,9 +59,30 @@ class Quiz(db.Model):
     progress_records = db.relationship(
         "UserProgress", back_populates="quiz", cascade="all, delete-orphan"
     )
+    questions = db.relationship(
+        "Question", back_populates="quiz", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Quiz {self.id} - {self.title}>"
+
+
+class Question(db.Model):
+    __tablename__ = "questions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey("quizzes.id"), nullable=False)
+    topic = db.Column(db.String(100), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    options = db.Column(db.JSON, nullable=False)
+    correct_answer = db.Column(db.String(255), nullable=False)
+    time_limit_seconds = db.Column(db.Integer, nullable=False, default=60)
+    difficulty = db.Column(db.String(20), nullable=True)
+
+    quiz = db.relationship("Quiz", back_populates="questions")
+
+    def __repr__(self):
+        return f"<Question {self.id} quiz_id={self.quiz_id}>"
 
 
 class UserProgress(db.Model):

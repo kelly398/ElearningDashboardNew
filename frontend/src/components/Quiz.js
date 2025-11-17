@@ -1,38 +1,328 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Button, Form } from 'react-bootstrap';
+import React, { useEffect, useState } from 'react';
+import { Card, Button, Form, Alert, Spinner, Badge } from 'react-bootstrap';
+
+const API_BASE = 'http://localhost:5000';
+const QUESTIONS_PER_SESSION = 5;
+const POINTS_PER_QUESTION = 20;
+
+const gradeFromPercentage = (pct) => {
+  if (pct >= 90) return { grade: 'A', comment: 'Outstanding! You mastered this topic.' };
+  if (pct >= 80) return { grade: 'B', comment: 'Great job! Keep it up!' };
+  if (pct >= 70) return { grade: 'C', comment: 'Good effort! Review and retry.' };
+  return { grade: 'F', comment: 'Keep studying! You can do it!' };
+};
 
 const Quiz = () => {
-  const [quiz, setQuiz] = useState(null);
-  const [answer, setAnswer] = useState('');
-  const [response, setResponse] = useState(null);
+  const [quizzes, setQuizzes] = useState([]);
+  const [quizzesLoading, setQuizzesLoading] = useState(true);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState('');
+  const [feedback, setFeedback] = useState(null);
+  const [score, setScore] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [questionStartTime, setQuestionStartTime] = useState(null);
+  const [quizError, setQuizError] = useState('');
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  const currentQuestion = questions[currentIndex];
 
   useEffect(() => {
-    fetch('http://localhost:5000/quiz/1')
-      .then(res => res.json())
-      .then(data => setQuiz(data))
-      .catch(() => setQuiz(null));
+    const fetchQuizzes = async () => {
+      setQuizzesLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/quizzes`);
+        const data = await res.json();
+        if (res.ok) {
+          setQuizzes(data.quizzes || []);
+        } else {
+          setQuizError(data.message || 'Unable to load available quizzes.');
+        }
+      } catch (error) {
+        setQuizError('Unable to load available quizzes.');
+      } finally {
+        setQuizzesLoading(false);
+      }
+    };
+
+    fetchQuizzes();
   }, []);
 
-  const submitAnswer = () => {
-    fetch('http://localhost:5000/quiz/1', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answer })
-    })
-      .then(res => res.json())
-      .then(data => setResponse(data));
+  useEffect(() => {
+    if (!currentQuestion) {
+      return;
+    }
+    setSelectedOption('');
+    setFeedback(null);
+    setHasSubmitted(false);
+    const limit = currentQuestion.time_limit_seconds || 60;
+    setTimeLeft(limit);
+    setQuestionStartTime(Date.now());
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    if (!currentQuestion || timeLeft === null || showResult || hasSubmitted) {
+      return;
+    }
+
+    if (timeLeft <= 0) {
+      handleTimeout();
+      return;
+    }
+
+    const timerId = setInterval(() => {
+      setTimeLeft((prev) => (prev !== null ? prev - 1 : prev));
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [timeLeft, currentQuestion, showResult, hasSubmitted]);
+
+  const startQuiz = (quiz) => {
+    setSelectedQuiz(quiz);
+    setScore(0);
+    setShowResult(false);
+    setQuestions([]);
+    setFeedback(null);
+    setQuizError('');
+    setCurrentIndex(0);
+    loadQuestionSet(quiz);
   };
 
-  return (
-    <div className="p-4">
-      {quiz && (
-        <Card className="p-4">
-          <h5 className="quiz-question">{quiz.question}</h5>
-          <Form.Control type="text" value={answer} onChange={e => setAnswer(e.target.value)} />
-          <Button className="mt-3" onClick={submitAnswer}>Submit</Button>
-        </Card>
+  const loadQuestionSet = async (quiz) => {
+    setLoadingQuestions(true);
+    try {
+      const res = await fetch(`${API_BASE}/quiz/${quiz.id}/questions?limit=${QUESTIONS_PER_SESSION}`);
+      const data = await res.json();
+      if (res.ok) {
+        setQuestions(data.questions || []);
+        setCurrentIndex(0);
+      } else {
+        setQuizError(data.message || 'Unable to load questions.');
+      }
+    } catch (error) {
+      setQuizError('Unable to load questions.');
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  const handleTimeout = () => {
+    if (!currentQuestion || hasSubmitted) {
+      return;
+    }
+    submitAnswer(true);
+  };
+
+  const submitAnswer = async (didTimeout = false) => {
+    if (!currentQuestion || submitting || hasSubmitted) return;
+    if (!didTimeout && !selectedOption.trim()) return;
+
+    setSubmitting(true);
+    setHasSubmitted(true);
+    const payload = {
+      question_id: currentQuestion.id,
+      answer: didTimeout ? null : selectedOption,
+      time_taken: questionStartTime ? Math.round((Date.now() - questionStartTime) / 1000) : null,
+      time_expired: didTimeout,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/quiz/${selectedQuiz.id}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFeedback({ type: 'danger', msg: data.message || 'Unable to submit answer.' });
+        setHasSubmitted(false);
+        return;
+      }
+
+      if (data.score_delta) {
+        setScore((prev) => prev + data.score_delta);
+      }
+
+      setFeedback({
+        type: data.correct ? 'success' : 'danger',
+        msg: data.message,
+        correctAnswer: !data.correct ? data.correct_answer : undefined,
+      });
+
+      setTimeout(() => goToNextQuestion(), 1500);
+    } catch (error) {
+      setFeedback({ type: 'danger', msg: 'Unable to submit answer.' });
+      setHasSubmitted(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const goToNextQuestion = () => {
+    if (currentIndex + 1 >= questions.length) {
+      setShowResult(true);
+      setTimeLeft(null);
+      return;
+    }
+    setCurrentIndex((prev) => prev + 1);
+  };
+
+  const resetQuiz = () => {
+    setSelectedQuiz(null);
+    setQuestions([]);
+    setShowResult(false);
+    setFeedback(null);
+    setScore(0);
+    setTimeLeft(null);
+    setQuestionStartTime(null);
+  };
+
+  const renderQuizSelection = () => (
+    <div className="p-4 text-center">
+      <h3>Select Quiz Subject</h3>
+      <p className="text-muted">Each session pulls a random set of questions with built-in timers.</p>
+      {quizzesLoading ? (
+        <div className="mt-4">
+          <Spinner animation="border" role="status" />
+          <p className="mt-2">Loading quizzes...</p>
+        </div>
+      ) : (
+        <div className="d-flex flex-wrap justify-content-center gap-3 mt-4">
+          {quizzes.map((quiz) => (
+            <Card key={quiz.id} className="p-3 shadow-sm" style={{ width: '280px' }}>
+              <Card.Title>{quiz.title}</Card.Title>
+              <Card.Text className="text-muted small">{quiz.description}</Card.Text>
+              <Card.Text className="fw-semibold">{quiz.question_count} questions available</Card.Text>
+              <Button variant="primary" onClick={() => startQuiz(quiz)}>
+                Start Randomized Quiz
+              </Button>
+            </Card>
+          ))}
+          {!quizzes.length && (
+            <Card className="p-4 shadow-sm">
+              <Card.Text>No quizzes found. Seed the database to continue.</Card.Text>
+            </Card>
+          )}
+        </div>
       )}
-      {response && <p className="mt-3">{response.message}</p>}
+      {quizError && <Alert variant="danger" className="mt-3">{quizError}</Alert>}
+    </div>
+  );
+
+  if (!selectedQuiz) {
+    return renderQuizSelection();
+  }
+
+  if (loadingQuestions) {
+    return (
+      <div className="p-4 text-center">
+        <Spinner animation="border" role="status" />
+        <p className="mt-2">Fetching random questions...</p>
+      </div>
+    );
+  }
+
+  if (showResult) {
+    const totalPossible = questions.length * POINTS_PER_QUESTION || POINTS_PER_QUESTION;
+    const percentage = Math.round((score / totalPossible) * 100);
+    const { grade, comment } = gradeFromPercentage(percentage);
+    return (
+      <div className="p-4 text-center">
+        <Card className="p-5 shadow-lg">
+          <h2>{selectedQuiz.title} Quiz Complete!</h2>
+          <h1 className="display-4 text-primary">{grade}</h1>
+          <p className="lead">{comment}</p>
+          <p><strong>Final Score: {score}/{totalPossible} ({percentage}%)</strong></p>
+          <Button variant="success" onClick={resetQuiz}>Choose Another Subject</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentQuestion) {
+    return (
+      <div className="p-4 text-center">
+        <Alert variant="warning">
+          Unable to load questions for this quiz. Please try another subject.
+        </Alert>
+        <Button variant="outline-primary" onClick={resetQuiz}>Back to subjects</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 animate-fadeIn">
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+          <h4 className="mb-0">{selectedQuiz.title}</h4>
+          <small className="text-muted">Question {currentIndex + 1}/{questions.length}</small>
+        </div>
+        <div className="text-end">
+          <Badge bg={timeLeft !== null && timeLeft <= 5 ? 'danger' : 'secondary'}>
+            Time Left: {timeLeft !== null ? `${timeLeft}s` : '--'}
+          </Badge>
+          <div className="small mt-1">
+            Score: {score}/{questions.length * POINTS_PER_QUESTION}
+          </div>
+        </div>
+      </div>
+
+      {quizError && (
+        <Alert variant="danger">
+          {quizError}
+        </Alert>
+      )}
+
+      <Card className="p-4 shadow-sm">
+        <Card.Title className="quiz-question">{currentQuestion.question}</Card.Title>
+
+        <Form.Group className="mt-3">
+          {currentQuestion.options?.map((opt, i) => (
+            <Form.Check
+              key={i}
+              type="radio"
+              label={opt}
+              name="answer"
+              value={opt}
+              onChange={() => setSelectedOption(opt)}
+              checked={selectedOption === opt}
+              disabled={hasSubmitted}
+              className="mb-2"
+            />
+          ))}
+        </Form.Group>
+
+        <div className="d-flex gap-2 mt-3">
+          <Button
+            onClick={() => submitAnswer(false)}
+            disabled={!selectedOption || submitting || hasSubmitted}
+          >
+            Submit
+          </Button>
+          <Button variant="outline-secondary" onClick={resetQuiz}>
+            Change Subject
+          </Button>
+        </div>
+
+        {feedback && (
+          <Alert variant={feedback.type} className="mt-3">
+            <div>{feedback.msg}</div>
+            {feedback.correctAnswer && (
+              <div className="small mt-1">Correct answer: {feedback.correctAnswer}</div>
+            )}
+          </Alert>
+        )}
+
+        <div className="mt-3 text-center">
+          <p>
+            <strong>Question:</strong> {currentIndex + 1}/{questions.length}
+          </p>
+        </div>
+      </Card>
     </div>
   );
 };

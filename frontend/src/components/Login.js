@@ -13,17 +13,15 @@ import React, { useState } from "react";
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      const data = await res.json();
 
       if (res.ok) {
-        const data = await res.json();
-        onLogin(data); // passes user info to App.js
+        onLogin(data.user); // passes user info to App.js
       } else {
-        const err = await res.text();
-        alert(err || "Invalid credentials");
+        alert(data.message || "Invalid credentials");
       }
     } catch (error) {
       alert("Error connecting to server");
-      console.error(error);
     }
   };
 

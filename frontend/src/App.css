@@ -11,6 +11,7 @@ body {
   background-color: #1e293b;
   min-height: 100vh;
   color: white;
+  transition: transform 0.3s ease;
 }
 
 .main-content {
@@ -66,6 +67,97 @@ body {
 .badge-card-platinum,
 .badge-card-ruby {
   flex: 1 1 150px;
+}
+
+@media (max-width: 991px) {
+  .sidebar-col {
+    min-height: 100vh;
+  }
+  .sidebar-col.mobile {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    max-width: 80%;
+    z-index: 1050;
+    transform: translateX(-100%);
+    padding: 0;
+  }
+  .sidebar-col.mobile.open {
+    display: block;
+    transform: translateX(0);
+  }
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1040;
+  }
+  .main-content {
+    max-height: none;
+    overflow-y: visible;
+    padding: 1rem;
+  }
+  .main-content.mobile-content {
+    padding-top: 1rem;
+  }
+  .navbar-custom .sidebar-toggle-btn {
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+}
+
+.streak-widget .streak-gauge {
+  min-width: 120px;
+}
+
+.streak-circle {
+  position: relative;
+  width: 110px;
+  height: 110px;
+}
+
+.streak-circle-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.streak-value {
+  font-size: 1.8rem;
+  font-weight: bold;
+}
+
+.circular-chart {
+  width: 110px;
+  height: 110px;
+}
+
+.circle-bg {
+  fill: none;
+  stroke: #eee;
+  stroke-width: 3.8;
+}
+
+.circle {
+  fill: none;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  stroke: #f87171;
+  animation: progress 1.2s ease-out forwards;
+}
+
+@keyframes progress {
+  0% {
+    stroke-dasharray: 0 100;
+  }
 }
 
 .reply-thread {

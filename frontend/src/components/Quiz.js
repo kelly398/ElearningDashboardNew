@@ -9,6 +9,7 @@ const gradeFromPercentage = (pct) => {
   if (pct >= 90) return { grade: 'A', comment: 'Outstanding! You mastered this topic.' };
   if (pct >= 80) return { grade: 'B', comment: 'Great job! Keep it up!' };
   if (pct >= 70) return { grade: 'C', comment: 'Good effort! Review and retry.' };
+  if (pct >= 60) return { grade: 'D', comment: 'Keep practicing—you are close!' };
   return { grade: 'F', comment: 'Keep studying! You can do it!' };
 };
 

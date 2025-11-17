@@ -55,6 +55,7 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
   const [badges, setBadges] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [streakData, setStreakData] = useState({ total: 0, longest: 0, current: 0 });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -77,6 +78,19 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
             };
           });
           setBadges(computedBadges);
+          const streakSummary = progressData.reduce(
+            (acc, item) => {
+              const streak = item.streak || 0;
+              if (streak > acc.longest) acc.longest = streak;
+              if (item.status === 'In Progress' || item.status === 'Completed') {
+                acc.current = Math.max(acc.current, streak);
+              }
+              acc.total += streak;
+              return acc;
+            },
+            { total: 0, longest: 0, current: 0 }
+          );
+          setStreakData(streakSummary);
         } else {
           setError(data.message || 'Unable to load dashboard data.');
         }
@@ -180,10 +194,59 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
     );
   };
 
+  const renderStreakWidget = () => {
+    const current = streakData.current || 0;
+    const longest = streakData.longest || 0;
+    const total = streakData.total || 0;
+    const progressPercent = Math.min(100, (current / Math.max(longest || 1, 1)) * 100);
+
+    return (
+      <Card className="mb-4 streak-widget shadow-sm">
+        <Card.Body className="d-flex align-items-center justify-content-between">
+          <div>
+            <h5 className="mb-1">Streak Tracker</h5>
+            <p className="text-muted mb-2">Keep learning daily to grow your streak.</p>
+            <div className="small text-muted">
+              Longest streak: <strong>{longest} days</strong>
+            </div>
+            <div className="small text-muted">
+              Total streak days: <strong>{total}</strong>
+            </div>
+          </div>
+          <div className="streak-gauge text-center ms-3">
+            <div className="streak-circle">
+              <div className="streak-circle-inner">
+                <span className="streak-value">{current}</span>
+                <small className="d-block text-muted">current</small>
+              </div>
+              <svg viewBox="0 0 36 36" className="circular-chart">
+                <path
+                  className="circle-bg"
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="circle"
+                  strokeDasharray={`${progressPercent}, 100`}
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+            </div>
+          </div>
+        </Card.Body>
+      </Card>
+    );
+  };
+
   return (
     <div className="dashboard-container p-3">
       <h2>Hello, {user?.username || 'Learner'}!</h2>
       {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
+
+      {renderStreakWidget()}
 
       <section className="progress-section mt-4">
         <h4>Your Learning Progress</h4>

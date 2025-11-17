@@ -255,6 +255,14 @@ def seed_question_pool(force=False):
         db.session.commit()
         logger.debug('Question pool seeded with %d quizzes', len(QUESTION_POOL_SEED))
 
+
+def quiz_target_score(quiz):
+    if not quiz:
+        return 100
+    total_questions = len(quiz.questions)
+    target = total_questions * POINTS_PER_CORRECT
+    return target if target > 0 else 100
+
 # Ensure DB file exists and is writable
 if not os.path.exists('db.sqlite'):
     open('db.sqlite', 'a').close()
@@ -387,6 +395,73 @@ def get_badges():
     return jsonify({'badges': [{'id': b.id, 'name': b.name, 'description': b.description} for b in badges]})
 
 
+@app.route('/dashboard/<int:user_id>', methods=['GET'])
+def get_user_dashboard(user_id):
+    user = User.query.get_or_404(user_id)
+
+    progress_records = UserProgress.query.filter_by(user_id=user.id).all()
+    progress_payload = []
+    for record in progress_records:
+        label = None
+        if record.module:
+            label = record.module.title
+        elif record.quiz:
+            label = record.quiz.title
+        else:
+            label = 'Learning Progress'
+
+        target_score = quiz_target_score(record.quiz)
+        percent_complete = 0
+        if target_score:
+            percent_complete = min(100, int(((record.score or 0) / target_score) * 100))
+
+        progress_payload.append({
+            'id': record.id,
+            'module_id': record.module_id,
+            'quiz_id': record.quiz_id,
+            'module_name': label,
+            'status': record.status,
+            'score': record.score or 0,
+            'streak': record.streak_count or 0,
+            'percent_complete': percent_complete,
+        })
+
+    if not progress_payload:
+        modules = Module.query.order_by(Module.order).all()
+        for module in modules:
+            progress_payload.append({
+                'id': f"module-{module.id}",
+                'module_id': module.id,
+                'quiz_id': None,
+                'module_name': module.title,
+                'status': 'Not Started',
+                'score': 0,
+                'streak': 0,
+                'percent_complete': 0,
+            })
+
+    badges = UserBadge.query.filter_by(user_id=user.id).all()
+    badges_payload = []
+    for badge in badges:
+        badges_payload.append({
+            'id': badge.id,
+            'name': badge.badge.name if badge.badge else 'Badge',
+            'description': badge.badge.description if badge.badge else '',
+            'level': badge.level,
+            'awarded_date': badge.awarded_date.isoformat(),
+        })
+
+    return jsonify({
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+        },
+        'progress': progress_payload,
+        'badges': badges_payload,
+    })
+
+
 @app.route('/quizzes', methods=['GET'])
 def list_quizzes():
     quizzes = Quiz.query.all()
@@ -445,24 +520,30 @@ def submit_quiz_answer(quiz_id):
     answer = data.get('answer')
     time_taken = data.get('time_taken')
     time_expired = data.get('time_expired', False)
+    user_id = data.get('user_id')
 
     if not question_id:
         return jsonify({'message': 'question_id is required'}), 400
+    if not user_id:
+        return jsonify({'message': 'user_id is required'}), 400
 
     quiz = Quiz.query.get_or_404(quiz_id)
     question = Question.query.filter_by(id=question_id, quiz_id=quiz.id).first()
     if not question:
         return jsonify({'message': 'Question not found for this quiz'}), 404
 
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
     allowed_time = question.time_limit_seconds or 0
     if not time_expired and time_taken is not None and allowed_time and time_taken > allowed_time:
         time_expired = True
 
-    user_id = 1  # Replace with authenticated user
-    progress = UserProgress.query.filter_by(user_id=user_id, quiz_id=quiz.id).first()
+    progress = UserProgress.query.filter_by(user_id=user.id, quiz_id=quiz.id).first()
     if not progress:
         progress = UserProgress(
-            user_id=user_id,
+            user_id=user.id,
             quiz_id=quiz.id,
             module_id=None,
             status='Not Started',
@@ -472,6 +553,7 @@ def submit_quiz_answer(quiz_id):
         db.session.add(progress)
         db.session.commit()
 
+    target_score = quiz_target_score(quiz)
     answered_correctly = False
     message = ''
 
@@ -486,7 +568,7 @@ def submit_quiz_answer(quiz_id):
     if answered_correctly:
         progress.score = (progress.score or 0) + POINTS_PER_CORRECT
         progress.streak_count = (progress.streak_count or 0) + 1
-        progress.status = 'Completed' if (progress.score or 0) >= 100 else 'In Progress'
+        progress.status = 'Completed' if (progress.score or 0) >= target_score else 'In Progress'
     else:
         progress.streak_count = max(0, (progress.streak_count or 0) - 1)
         if progress.status == 'Not Started':
@@ -503,22 +585,31 @@ def submit_quiz_answer(quiz_id):
         'streak': progress.streak_count,
         'time_limit_seconds': question.time_limit_seconds,
         'timed_out': time_expired,
+        'status': progress.status,
+        'target_score': target_score,
     })
 # Quiz endpoint
 @app.route('/quiz/<int:quiz_id>', methods=['GET', 'POST'])
 def quiz(quiz_id):
-    user_id = 1  # Replace with actual authenticated user ID in production
     quiz = Quiz.query.get_or_404(quiz_id)
+    request_data = request.get_json() if request.method == 'POST' else None
+    user_id = request.args.get('user_id', type=int) or (request_data or {}).get('user_id')
+    if not user_id:
+        return jsonify({'message': 'user_id is required'}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
 
     # Get or create progress record for this user and quiz
-    progress = UserProgress.query.filter_by(user_id=user_id, quiz_id=quiz.id).first()
+    progress = UserProgress.query.filter_by(user_id=user.id, quiz_id=quiz.id).first()
     if not progress:
-        progress = UserProgress(user_id=user_id, quiz_id=quiz.id, module_id=None, status='Not Started', score=0, streak_count=0)
+        progress = UserProgress(user_id=user.id, quiz_id=quiz.id, module_id=None, status='Not Started', score=0, streak_count=0)
         db.session.add(progress)
         db.session.commit()
 
     if request.method == 'POST':
-        data = request.get_json()
+        data = request_data or {}
         answer = data.get('answer')
         if not answer:
             return jsonify({'message': 'Answer is required'}), 400

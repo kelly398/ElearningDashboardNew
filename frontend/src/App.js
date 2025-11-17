@@ -11,20 +11,28 @@ import './App.css';
 function App() {
   const [page, setPage] = useState('login');
   const [user, setUser] = useState(null);
-
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
 
   const handleLogin = (userData) => {
     setUser(userData);
     setPage('dashboard');
   };
 
+  const handleQuizComplete = () => {
+    setDashboardRefreshKey((prev) => prev + 1);
+  };
+
   const renderPage = () => {
     if (!user) return <Login onLogin={handleLogin} />;
     switch (page) {
-      case 'dashboard': return <Dashboard />;
-      case 'quiz': return <Quiz />;
-      case 'forum': return <Forum />;
-      default: return <Dashboard />;
+      case 'dashboard':
+        return <Dashboard user={user} refreshKey={dashboardRefreshKey} />;
+      case 'quiz':
+        return <Quiz user={user} onQuizComplete={handleQuizComplete} />;
+      case 'forum':
+        return <Forum user={user} />;
+      default:
+        return <Dashboard user={user} refreshKey={dashboardRefreshKey} />;
     }
   };
 

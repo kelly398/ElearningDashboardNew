@@ -12,7 +12,8 @@ const gradeFromPercentage = (pct) => {
   return { grade: 'F', comment: 'Keep studying! You can do it!' };
 };
 
-const Quiz = () => {
+const Quiz = ({ user, onQuizComplete }) => {
+  const userId = user?.id;
   const [quizzes, setQuizzes] = useState([]);
   const [quizzesLoading, setQuizzesLoading] = useState(true);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
@@ -82,6 +83,10 @@ const Quiz = () => {
   }, [timeLeft, currentQuestion, showResult, hasSubmitted]);
 
   const startQuiz = (quiz) => {
+    if (!userId) {
+      setQuizError('Please log in to start a quiz.');
+      return;
+    }
     setSelectedQuiz(quiz);
     setScore(0);
     setShowResult(false);
@@ -120,6 +125,10 @@ const Quiz = () => {
   const submitAnswer = async (didTimeout = false) => {
     if (!currentQuestion || submitting || hasSubmitted) return;
     if (!didTimeout && !selectedOption.trim()) return;
+    if (!userId) {
+      setFeedback({ type: 'danger', msg: 'Please log in to submit answers.' });
+      return;
+    }
 
     setSubmitting(true);
     setHasSubmitted(true);
@@ -128,6 +137,7 @@ const Quiz = () => {
       answer: didTimeout ? null : selectedOption,
       time_taken: questionStartTime ? Math.round((Date.now() - questionStartTime) / 1000) : null,
       time_expired: didTimeout,
+      user_id: userId,
     };
 
     try {
@@ -162,10 +172,17 @@ const Quiz = () => {
     }
   };
 
+  const finalizeQuiz = () => {
+    setShowResult(true);
+    setTimeLeft(null);
+    if (typeof onQuizComplete === 'function') {
+      onQuizComplete();
+    }
+  };
+
   const goToNextQuestion = () => {
     if (currentIndex + 1 >= questions.length) {
-      setShowResult(true);
-      setTimeLeft(null);
+      finalizeQuiz();
       return;
     }
     setCurrentIndex((prev) => prev + 1);
@@ -179,6 +196,9 @@ const Quiz = () => {
     setScore(0);
     setTimeLeft(null);
     setQuestionStartTime(null);
+    setSelectedOption('');
+    setHasSubmitted(false);
+    setQuizError('');
   };
 
   const renderQuizSelection = () => (

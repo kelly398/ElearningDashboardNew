@@ -18,8 +18,19 @@ from models import (
 )
 
 basedir = os.path.abspath(os.path.dirname(__file__))
+db_path = os.environ.get('DATABASE_URL')
+if db_path:
+    database_uri = db_path
+else:
+    persistent_path = os.environ.get('PERSISTENT_DB_PATH', os.path.join(basedir, 'db.sqlite'))
+    if persistent_path.startswith('/app'):
+        os.makedirs(os.path.dirname(persistent_path), exist_ok=True)
+        database_uri = f"sqlite:////{persistent_path.lstrip('/')}"
+    else:
+        database_uri = f"sqlite:///{persistent_path}"
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'db.sqlite')}"
+app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app)
 print("Using database file:", os.path.abspath("db.sqlite"))

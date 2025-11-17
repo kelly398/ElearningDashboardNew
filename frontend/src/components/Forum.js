@@ -70,7 +70,7 @@ const Forum = ({ user }) => {
   const renderReplies = (replies = []) => {
     if (!replies.length) return null;
     return (
-      <div className="mt-3 ms-4 border-start ps-3">
+      <div className="mt-3 ms-4 border-start ps-3 reply-thread">
         {replies.map((reply) => (
           <Card key={reply.id} className="mb-2 shadow-sm border-light">
             <Card.Body>

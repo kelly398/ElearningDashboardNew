@@ -52,7 +52,7 @@ function App() {
               <Sidebar setPage={setPage} onLogout={handleLogout} />
             </Col>
           )}
-          <Col>{renderPage()}</Col>
+          <Col className="main-content">{renderPage()}</Col>
         </Row>
       </Container>
     </div>

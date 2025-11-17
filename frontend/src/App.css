@@ -13,6 +13,12 @@ body {
   color: white;
 }
 
+.main-content {
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
 .navbar-custom {
   background-color: #0f172a;
   color: white;
@@ -37,6 +43,35 @@ body {
   border-radius: 8px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.badge-card-bronze {
+  border-top: 4px solid #8c5a30;
+}
+.badge-card-silver {
+  border-top: 4px solid #c0c0c0;
+}
+.badge-card-gold {
+  border-top: 4px solid #b69329;
+}
+.badge-card-platinum {
+  border-top: 4px solid #e5e4e2;
+}
+.badge-card-ruby {
+  border-top: 4px solid #e0115f;
+}
+.badge-card-bronze,
+.badge-card-silver,
+.badge-card-gold,
+.badge-card-platinum,
+.badge-card-ruby {
+  flex: 1 1 150px;
+}
+
+.reply-thread {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 @keyframes fadeIn {
   from {

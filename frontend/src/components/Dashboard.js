@@ -4,6 +4,52 @@ import './Dashboard.css';
 
 const API_BASE = 'http://localhost:5000';
 
+const badgeFromPercent = (percent = 0) => {
+  if (percent <= 40) {
+    return {
+      name: 'Bronze - Beginner',
+      description: 'Score 40% or below',
+      variant: 'warning',
+      color: '#8c5a30',
+      emoji: '🥉',
+    };
+  }
+  if (percent <= 50) {
+    return {
+      name: 'Silver - Intermediate',
+      description: 'Score 41% - 50%',
+      variant: 'secondary',
+      color: '#c0c0c0',
+      emoji: '🥈',
+    };
+  }
+  if (percent <= 70) {
+    return {
+      name: 'Gold - Expert',
+      description: 'Score 51% - 70%',
+      variant: 'warning',
+      color: '#b69329',
+      emoji: '🥇',
+    };
+  }
+  if (percent <= 85) {
+    return {
+      name: 'Platinum - Proficient',
+      description: 'Score 71% - 85%',
+      variant: 'info',
+      color: '#e5e4e2',
+      emoji: '💎',
+    };
+  }
+  return {
+    name: 'Ruby - Grand Master',
+    description: 'Score above 85%',
+    variant: 'danger',
+    color: '#e0115f',
+    emoji: '🔴',
+  };
+};
+
 const Dashboard = ({ user, refreshKey = 0 }) => {
   const [progress, setProgress] = useState([]);
   const [badges, setBadges] = useState([]);
@@ -19,8 +65,18 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
         const res = await fetch(`${API_BASE}/dashboard/${user.id}`);
         const data = await res.json();
         if (res.ok) {
-          setProgress(data.progress || []);
-          setBadges(data.badges || []);
+          const progressData = data.progress || [];
+          setProgress(progressData);
+          const computedBadges = progressData.map((item) => {
+            const badge = badgeFromPercent(item.percent_complete);
+            return {
+              ...badge,
+              module_name: item.module_name,
+              level: undefined,
+              percent: item.percent_complete,
+            };
+          });
+          setBadges(computedBadges);
         } else {
           setError(data.message || 'Unable to load dashboard data.');
         }
@@ -91,20 +147,37 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
       return <p className="text-muted">No badges yet. Keep learning to earn some!</p>;
     }
 
-    return badges.map((b) => (
-      <Card key={b.id} className="p-3 text-center shadow-sm" style={{ width: '180px' }}>
-        <div
-          className="badge-icon mx-auto mb-2 rounded-circle d-flex align-items-center justify-content-center"
-          style={{ width: 50, height: 50, backgroundColor: '#e9ecef' }}
-        >
-          <span style={{ fontSize: '1.2rem' }}>
-            {b.name?.[0] || '?'}
-          </span>
-        </div>
-        <BsBadge bg="success" className="mb-1">{b.name} (Lv {b.level || 1})</BsBadge>
-        <Card.Text className="small">{b.description}</Card.Text>
-      </Card>
-    ));
+    return (
+      <div className="d-flex flex-wrap gap-3">
+        {badges.map((b, idx) => (
+          <Card
+            key={`${b.module_name}-${idx}`}
+            className={`p-2 text-center shadow-sm badge-card-${(b.name || '').split(' ')[0].toLowerCase()}`}
+            style={{ width: '150px', borderRadius: '14px' }}
+          >
+            <div
+              className="badge-icon mx-auto mb-2 rounded-circle d-flex align-items-center justify-content-center"
+              style={{
+                width: 45,
+                height: 45,
+                backgroundColor: b.color || '#e9ecef',
+                color: '#111',
+                fontSize: '1.2rem',
+                border: '1px solid rgba(0,0,0,0.1)',
+              }}
+            >
+              <span>{b.emoji || '⭐'}</span>
+            </div>
+            <BsBadge bg={b.variant || 'success'} className="mb-1">{b.name}</BsBadge>
+            <Card.Text className="small mb-0">{b.description}</Card.Text>
+            <small className="text-muted d-block mt-2">{b.module_name}</small>
+            {typeof b.percent === 'number' && (
+              <small className="text-muted">Progress: {b.percent}%</small>
+            )}
+          </Card>
+        ))}
+      </div>
+    );
   };
 
   return (

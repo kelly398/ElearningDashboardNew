@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, ProgressBar, Badge as BsBadge, Spinner, Alert } from 'react-bootstrap';
 import './Dashboard.css';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
 
 const badgeFromPercent = (percent = 0) => {
   if (percent <= 40) {

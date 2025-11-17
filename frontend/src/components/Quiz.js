@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Button, Form, Alert, Spinner, Badge } from 'react-bootstrap';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000';
 const QUESTIONS_PER_SESSION = 5;
 const POINTS_PER_QUESTION = 20;
 

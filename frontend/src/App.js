@@ -18,6 +18,12 @@ function App() {
     setPage('dashboard');
   };
 
+  const handleLogout = () => {
+    setUser(null);
+    setPage('login');
+    setDashboardRefreshKey(0);
+  };
+
   const handleQuizComplete = () => {
     setDashboardRefreshKey((prev) => prev + 1);
   };
@@ -41,7 +47,11 @@ function App() {
       {user && <Navbar user={user} />}
       <Container fluid>
         <Row>
-          {user && <Col xs={2} className="sidebar-col"><Sidebar setPage={setPage} /></Col>}
+          {user && (
+            <Col xs={2} className="sidebar-col">
+              <Sidebar setPage={setPage} onLogout={handleLogout} />
+            </Col>
+          )}
           <Col>{renderPage()}</Col>
         </Row>
       </Container>

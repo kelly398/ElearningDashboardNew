@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 POINTS_PER_CORRECT = 20
 SESSION_QUESTION_LIMIT = 5
 AVAILABLE_DIFFICULTIES = ['easy', 'medium', 'hard']
+FORUM_TOPICS = ['General', 'Cloud Computing', 'Web Design with JavaScript', 'Data Structures', 'Deep Learning']
 
 QUESTION_POOL_SEED = [
     {
@@ -635,17 +636,57 @@ def signup():
 @app.route('/forum', methods=['GET', 'POST'])
 def forum():
     if request.method == 'POST':
-        data = request.json
+        data = request.json or {}
+        user_id = data.get('user_id')
+        if not user_id:
+            return jsonify({'message': 'user_id is required'}), 400
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        topic = (data.get('topic') or 'General').strip() or 'General'
+        if topic not in FORUM_TOPICS:
+            topic = 'General'
+        thread_id = data.get('thread_id')
+        if thread_id:
+            parent_post = ForumPost.query.get(thread_id)
+            if not parent_post:
+                return jsonify({'message': 'Parent post not found'}), 404
+            topic = parent_post.topic
         post = ForumPost(
-            user_id=1,
-            thread_id=data.get('thread_id'),
-            content=data.get('content')
+            user_id=user.id,
+            thread_id=thread_id,
+            content=data.get('content'),
+            topic=topic
         )
         db.session.add(post)
         db.session.commit()
         return jsonify({'message': 'Post added', 'post_id': post.id})
-    posts = ForumPost.query.all()
-    return jsonify({'posts': [{'id': p.id, 'content': p.content, 'date': p.post_date.isoformat()} for p in posts]})
+    posts = ForumPost.query.order_by(ForumPost.post_date.asc()).all()
+    post_map = {}
+    threads = []
+    for post in posts:
+        payload = {
+            'id': post.id,
+            'content': post.content,
+            'date': post.post_date.isoformat(),
+            'topic': post.topic,
+            'author': post.author.username if post.author else 'User',
+            'replies': []
+        }
+        post_map[post.id] = payload
+        if post.thread_id is None:
+            threads.append(payload)
+
+    for post in posts:
+        if post.thread_id:
+            parent_payload = post_map.get(post.thread_id)
+            if parent_payload:
+                parent_payload['replies'].append(post_map[post.id])
+
+    return jsonify({
+        'posts': threads,
+        'topics': FORUM_TOPICS
+    })
 
 # Badges endpoint
 @app.route('/badges', methods=['GET'])

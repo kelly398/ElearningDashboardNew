@@ -116,6 +116,7 @@ class ForumPost(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     thread_id = db.Column(db.Integer, db.ForeignKey('forum_posts.id'), nullable=True)
+    topic = db.Column(db.String(100), nullable=False, default='General')
     content = db.Column(db.Text, nullable=False)
     post_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     likes = db.Column(db.Integer, nullable=False, default=0)

@@ -1,0 +1,26 @@
+{
+  "build": {
+    "builder": "nixpacks",
+    "env": {
+      "NODE_ENV": "production"
+    }
+  },
+  "deploy": {
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "never"
+  },
+  "services": [
+    {
+      "name": "backend",
+      "rootDirectory": "../backend",
+      "startCommand": "python app.py"
+    },
+    {
+      "name": "frontend",
+      "rootDirectory": ".",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npx serve -s build -l $PORT"
+    }
+  ]
+}

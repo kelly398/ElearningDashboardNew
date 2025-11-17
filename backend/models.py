@@ -97,6 +97,9 @@ class UserProgress(db.Model):
     score = db.Column(db.Float, nullable=True)
     streak_count = db.Column(db.Integer, nullable=False, default=0)
     completed = db.Column(db.DateTime, nullable=True)
+    current_difficulty = db.Column(db.String(20), nullable=False, default='medium')
+    question_history = db.Column(db.JSON, nullable=True, default=list)
+    active_session_answers = db.Column(db.Integer, nullable=False, default=0)
 
     # Relationships
     user = db.relationship("User", back_populates="progress_records")

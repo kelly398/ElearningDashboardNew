@@ -12,13 +12,22 @@ const gradeFromPercentage = (pct) => {
   return { grade: 'F', comment: 'Keep studying! You can do it!' };
 };
 
+const difficultyVariant = {
+  easy: 'success',
+  medium: 'warning',
+  hard: 'danger',
+};
+
 const Quiz = ({ user, onQuizComplete }) => {
   const userId = user?.id;
   const [quizzes, setQuizzes] = useState([]);
   const [quizzesLoading, setQuizzesLoading] = useState(true);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [currentDifficulty, setCurrentDifficulty] = useState('medium');
+  const [questionsAsked, setQuestionsAsked] = useState(0);
+  const [questionsAnswered, setQuestionsAnswered] = useState(0);
+  const [sessionQuestionTarget, setSessionQuestionTarget] = useState(QUESTIONS_PER_SESSION);
   const [selectedOption, setSelectedOption] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [score, setScore] = useState(0);
@@ -29,8 +38,7 @@ const Quiz = ({ user, onQuizComplete }) => {
   const [questionStartTime, setQuestionStartTime] = useState(null);
   const [quizError, setQuizError] = useState('');
   const [hasSubmitted, setHasSubmitted] = useState(false);
-
-  const currentQuestion = questions[currentIndex];
+  const [sessionComplete, setSessionComplete] = useState(false);
 
   useEffect(() => {
     const fetchQuizzes = async () => {
@@ -54,15 +62,14 @@ const Quiz = ({ user, onQuizComplete }) => {
   }, []);
 
   useEffect(() => {
-    if (!currentQuestion) {
-      return;
-    }
+    if (!currentQuestion) return;
     setSelectedOption('');
     setFeedback(null);
     setHasSubmitted(false);
     const limit = currentQuestion.time_limit_seconds || 60;
     setTimeLeft(limit);
     setQuestionStartTime(Date.now());
+    setCurrentDifficulty(currentQuestion.difficulty || currentDifficulty);
   }, [currentQuestion]);
 
   useEffect(() => {
@@ -87,29 +94,51 @@ const Quiz = ({ user, onQuizComplete }) => {
       setQuizError('Please log in to start a quiz.');
       return;
     }
+
     setSelectedQuiz(quiz);
     setScore(0);
     setShowResult(false);
-    setQuestions([]);
     setFeedback(null);
     setQuizError('');
-    setCurrentIndex(0);
-    loadQuestionSet(quiz);
+    setCurrentQuestion(null);
+    setQuestionsAsked(0);
+    setQuestionsAnswered(0);
+    setSessionQuestionTarget(QUESTIONS_PER_SESSION);
+    setSessionComplete(false);
+    fetchNextQuestion(quiz, true);
   };
 
-  const loadQuestionSet = async (quiz) => {
+  const fetchNextQuestion = async (quiz, resetSession = false) => {
+    if (!quiz || !userId) return;
     setLoadingQuestions(true);
     try {
-      const res = await fetch(`${API_BASE}/quiz/${quiz.id}/questions?limit=${QUESTIONS_PER_SESSION}`);
-      const data = await res.json();
-      if (res.ok) {
-        setQuestions(data.questions || []);
-        setCurrentIndex(0);
-      } else {
-        setQuizError(data.message || 'Unable to load questions.');
+      const params = new URLSearchParams({
+        user_id: userId,
+      });
+      if (resetSession) {
+        params.append('reset_session', '1');
       }
+
+      const res = await fetch(`${API_BASE}/quiz/${quiz.id}/next-question?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setQuizError(data.message || 'Unable to fetch question.');
+        return;
+      }
+
+      if (data.quiz_complete) {
+        setQuestionsAsked(QUESTIONS_PER_SESSION);
+        setQuestionsAnswered(QUESTIONS_PER_SESSION);
+        finalizeQuiz();
+        return;
+      }
+
+      setCurrentQuestion(data.question);
+      setQuestionsAsked((prev) => Math.min(prev + 1, QUESTIONS_PER_SESSION));
+      setSessionQuestionTarget(QUESTIONS_PER_SESSION);
+      setCurrentDifficulty(data.question?.difficulty || data.current_difficulty || 'medium');
     } catch (error) {
-      setQuizError('Unable to load questions.');
+      setQuizError('Unable to fetch question.');
     } finally {
       setLoadingQuestions(false);
     }
@@ -163,7 +192,15 @@ const Quiz = ({ user, onQuizComplete }) => {
         correctAnswer: !data.correct ? data.correct_answer : undefined,
       });
 
-      setTimeout(() => goToNextQuestion(), 1500);
+      const updatedAnswered = Math.min(questionsAnswered + 1, QUESTIONS_PER_SESSION);
+      const shouldComplete = Boolean(data.session_complete) || updatedAnswered >= QUESTIONS_PER_SESSION;
+
+      setQuestionsAnswered(updatedAnswered);
+      setCurrentDifficulty(data.current_difficulty || currentDifficulty);
+      setSessionQuestionTarget(QUESTIONS_PER_SESSION);
+      setSessionComplete(shouldComplete);
+
+      setTimeout(() => handlePostAnswer(shouldComplete), 1200);
     } catch (error) {
       setFeedback({ type: 'danger', msg: 'Unable to submit answer.' });
       setHasSubmitted(false);
@@ -172,25 +209,26 @@ const Quiz = ({ user, onQuizComplete }) => {
     }
   };
 
+  const handlePostAnswer = (shouldComplete) => {
+    if (shouldComplete) {
+      finalizeQuiz();
+    } else {
+      fetchNextQuestion(selectedQuiz);
+    }
+  };
+
   const finalizeQuiz = () => {
     setShowResult(true);
     setTimeLeft(null);
+    setSessionComplete(true);
     if (typeof onQuizComplete === 'function') {
       onQuizComplete();
     }
   };
 
-  const goToNextQuestion = () => {
-    if (currentIndex + 1 >= questions.length) {
-      finalizeQuiz();
-      return;
-    }
-    setCurrentIndex((prev) => prev + 1);
-  };
-
   const resetQuiz = () => {
     setSelectedQuiz(null);
-    setQuestions([]);
+    setCurrentQuestion(null);
     setShowResult(false);
     setFeedback(null);
     setScore(0);
@@ -199,12 +237,31 @@ const Quiz = ({ user, onQuizComplete }) => {
     setSelectedOption('');
     setHasSubmitted(false);
     setQuizError('');
+    setQuestionsAsked(0);
+    setQuestionsAnswered(0);
+    setSessionComplete(false);
+  };
+
+  const restartCurrentQuiz = () => {
+    if (!selectedQuiz) return;
+    setShowResult(false);
+    setFeedback(null);
+    setScore(0);
+    setTimeLeft(null);
+    setQuestionStartTime(null);
+    setSelectedOption('');
+    setHasSubmitted(false);
+    setQuizError('');
+    setQuestionsAsked(0);
+    setQuestionsAnswered(0);
+    setSessionComplete(false);
+    fetchNextQuestion(selectedQuiz, true);
   };
 
   const renderQuizSelection = () => (
     <div className="p-4 text-center">
       <h3>Select Quiz Subject</h3>
-      <p className="text-muted">Each session pulls a random set of questions with built-in timers.</p>
+      <p className="text-muted">Adaptive sessions ramp difficulty based on your performance.</p>
       {quizzesLoading ? (
         <div className="mt-4">
           <Spinner animation="border" role="status" />
@@ -218,7 +275,7 @@ const Quiz = ({ user, onQuizComplete }) => {
               <Card.Text className="text-muted small">{quiz.description}</Card.Text>
               <Card.Text className="fw-semibold">{quiz.question_count} questions available</Card.Text>
               <Button variant="primary" onClick={() => startQuiz(quiz)}>
-                Start Randomized Quiz
+                Start Adaptive Quiz
               </Button>
             </Card>
           ))}
@@ -237,18 +294,18 @@ const Quiz = ({ user, onQuizComplete }) => {
     return renderQuizSelection();
   }
 
-  if (loadingQuestions) {
+  if (loadingQuestions && !currentQuestion && !showResult) {
     return (
       <div className="p-4 text-center">
         <Spinner animation="border" role="status" />
-        <p className="mt-2">Fetching random questions...</p>
+        <p className="mt-2">Preparing adaptive question...</p>
       </div>
     );
   }
 
   if (showResult) {
-    const totalPossible = questions.length * POINTS_PER_QUESTION || POINTS_PER_QUESTION;
-    const percentage = Math.round((score / totalPossible) * 100);
+    const totalPossible = sessionQuestionTarget * POINTS_PER_QUESTION || POINTS_PER_QUESTION;
+    const percentage = Math.round((score / (totalPossible || POINTS_PER_QUESTION)) * 100);
     const { grade, comment } = gradeFromPercentage(percentage);
     return (
       <div className="p-4 text-center">
@@ -257,7 +314,14 @@ const Quiz = ({ user, onQuizComplete }) => {
           <h1 className="display-4 text-primary">{grade}</h1>
           <p className="lead">{comment}</p>
           <p><strong>Final Score: {score}/{totalPossible} ({percentage}%)</strong></p>
-          <Button variant="success" onClick={resetQuiz}>Choose Another Subject</Button>
+          <div className="d-flex flex-column flex-md-row gap-2 justify-content-center mt-3">
+            <Button variant="primary" onClick={restartCurrentQuiz}>
+              Try Again
+            </Button>
+            <Button variant="success" onClick={resetQuiz}>
+              Choose Another Subject
+            </Button>
+          </div>
         </Card>
       </div>
     );
@@ -279,14 +343,19 @@ const Quiz = ({ user, onQuizComplete }) => {
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div>
           <h4 className="mb-0">{selectedQuiz.title}</h4>
-          <small className="text-muted">Question {currentIndex + 1}/{questions.length}</small>
+          <small className="text-muted">
+            Question {Math.min(questionsAsked, sessionQuestionTarget)}/{sessionQuestionTarget}
+          </small>
         </div>
         <div className="text-end">
+          <Badge bg={difficultyVariant[currentDifficulty] || 'secondary'} className="me-2">
+            Difficulty: {currentDifficulty || 'medium'}
+          </Badge>
           <Badge bg={timeLeft !== null && timeLeft <= 5 ? 'danger' : 'secondary'}>
             Time Left: {timeLeft !== null ? `${timeLeft}s` : '--'}
           </Badge>
           <div className="small mt-1">
-            Score: {score}/{questions.length * POINTS_PER_QUESTION}
+            Score: {score}/{sessionQuestionTarget * POINTS_PER_QUESTION}
           </div>
         </div>
       </div>
@@ -336,12 +405,6 @@ const Quiz = ({ user, onQuizComplete }) => {
             )}
           </Alert>
         )}
-
-        <div className="mt-3 text-center">
-          <p>
-            <strong>Question:</strong> {currentIndex + 1}/{questions.length}
-          </p>
-        </div>
       </Card>
     </div>
   );

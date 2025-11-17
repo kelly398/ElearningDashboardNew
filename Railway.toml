@@ -3,7 +3,7 @@ builder = "nixpacks"
 
 [build.env]
 NODE_ENV = "production"
-
+PYTHON_VERSION = "3.11"
 [deploy]
 healthcheckPath = "/"
 healthcheckTimeout = 100

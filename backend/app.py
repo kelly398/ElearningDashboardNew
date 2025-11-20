@@ -4,7 +4,7 @@ import os
 import time
 import logging
 from flask_cors import CORS
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from extensions import db
 from models import (
     User,
@@ -15,6 +15,7 @@ from models import (
     ForumPost,
     Badge,
     UserBadge,
+    UserModule,
 )
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -483,6 +484,14 @@ def ordered_difficulty_sequence(current):
     # Ensure current difficulty first, then harder levels, then wrap to easier ones
     return sequence
 
+
+def user_has_module_access(user_id, module_id):
+    if not module_id:
+        return True
+    if not user_id:
+        return False
+    return UserModule.query.filter_by(user_id=user_id, module_id=module_id).first() is not None
+
 # Ensure DB file exists and is writable
 if not os.path.exists('db.sqlite'):
     open('db.sqlite', 'a').close()
@@ -763,9 +772,114 @@ def get_user_dashboard(user_id):
     })
 
 
+@app.route('/modules', methods=['GET'])
+def list_modules():
+    modules = Module.query.order_by(Module.order.asc(), Module.id.asc()).all()
+    module_payload = []
+    for module in modules:
+        module_payload.append({
+            'id': module.id,
+            'title': module.title,
+            'category': module.category,
+            'description': module.description,
+            'duration': module.duration,
+            'order': module.order,
+        })
+
+    return jsonify({'modules': module_payload})
+
+
+@app.route('/users/<int:user_id>/modules', methods=['GET', 'POST'])
+def manage_user_modules(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if request.method == 'GET':
+        assignments = UserModule.query.filter_by(user_id=user.id).all()
+        response_payload = []
+        for assignment in assignments:
+            module = assignment.module
+            response_payload.append({
+                'id': assignment.id,
+                'module_id': assignment.module_id,
+                'title': module.title if module else None,
+                'category': module.category if module else None,
+                'assigned_at': assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            })
+        return jsonify({'modules': response_payload})
+
+    data = request.get_json() or {}
+    module_ids = data.get('module_ids', [])
+    if module_ids is None:
+        module_ids = []
+    if not isinstance(module_ids, list):
+        return jsonify({'message': 'module_ids must be a list'}), 400
+
+    normalized_ids = set()
+    for mid in module_ids:
+        try:
+            normalized_ids.add(int(mid))
+        except (ValueError, TypeError):
+            return jsonify({'message': 'module_ids must be integers'}), 400
+
+    if normalized_ids:
+        modules = Module.query.filter(Module.id.in_(normalized_ids)).all()
+        found_ids = {module.id for module in modules}
+        missing = normalized_ids - found_ids
+        if missing:
+            return jsonify({'message': f'Modules not found: {sorted(list(missing))}'}), 404
+    else:
+        modules = []
+
+    assignments = UserModule.query.filter_by(user_id=user.id).all()
+    existing_ids = {assignment.module_id for assignment in assignments}
+
+    for assignment in assignments:
+        if assignment.module_id not in normalized_ids:
+            db.session.delete(assignment)
+
+    for module in modules:
+        if module.id not in existing_ids:
+            db.session.add(UserModule(user_id=user.id, module_id=module.id))
+
+    db.session.commit()
+
+    updated_assignments = UserModule.query.filter_by(user_id=user.id).all()
+    response_payload = []
+    for assignment in updated_assignments:
+        module = assignment.module
+        response_payload.append({
+            'id': assignment.id,
+            'module_id': assignment.module_id,
+            'title': module.title if module else None,
+            'category': module.category if module else None,
+            'assigned_at': assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+        })
+
+    return jsonify({'message': 'Modules updated successfully', 'modules': response_payload})
+
+
 @app.route('/quizzes', methods=['GET'])
 def list_quizzes():
-    quizzes = Quiz.query.all()
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'quizzes': [], 'message': 'user_id is required'}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'quizzes': [], 'message': 'User not found'}), 404
+
+    assignments = UserModule.query.filter_by(user_id=user.id).all()
+    selected_module_ids = [assignment.module_id for assignment in assignments if assignment.module_id]
+    if not selected_module_ids:
+        return jsonify({
+            'quizzes': [],
+            'message': 'Select at least one module from the catalog to unlock quizzes.'
+        })
+
+    quizzes = Quiz.query.filter(
+        or_(Quiz.module_id.is_(None), Quiz.module_id.in_(selected_module_ids))
+    ).order_by(Quiz.title.asc()).all()
+
     response = []
     for quiz in quizzes:
         response.append({
@@ -774,6 +888,8 @@ def list_quizzes():
             'description': quiz.description,
             'question_count': len(quiz.questions),
             'topic': quiz.questions[0].topic if quiz.questions else None,
+            'module_id': quiz.module_id,
+            'module_title': quiz.module.title if quiz.module else None,
         })
     return jsonify({'quizzes': response})
 
@@ -828,6 +944,8 @@ def get_next_question(quiz_id):
         return jsonify({'message': 'User not found'}), 404
 
     quiz = Quiz.query.get_or_404(quiz_id)
+    if not user_has_module_access(user.id, quiz.module_id):
+        return jsonify({'message': 'Please select this module in the catalog before taking the quiz.'}), 403
     progress = UserProgress.query.filter_by(user_id=user.id, quiz_id=quiz.id).first()
     if not progress:
         progress = UserProgress(
@@ -926,6 +1044,9 @@ def submit_quiz_answer(quiz_id):
     user = User.query.get(user_id)
     if not user:
         return jsonify({'message': 'User not found'}), 404
+
+    if not user_has_module_access(user.id, quiz.module_id):
+        return jsonify({'message': 'Please select this module in the catalog before taking the quiz.'}), 403
 
     allowed_time = question.time_limit_seconds or 0
     if not time_expired and time_taken is not None and allowed_time and time_taken > allowed_time:

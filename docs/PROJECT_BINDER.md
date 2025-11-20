@@ -154,8 +154,8 @@ Key differentiators:
 
 ### Contact / Ownership
 
-- **Product Owner:** _Add name/email_
-- **Technical Owner:** _Add name/email_
+- **Product Owner:** _Suomayh's_Group_
+- **Technical Owner:** _cK_
 - **Support:** Use GitHub issues or Slack channel `#elearning-dashboard`.
 
 Keep this binder updated whenever deployments or architecture decisions change.

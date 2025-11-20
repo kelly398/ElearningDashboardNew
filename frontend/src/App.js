@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import Quiz from './components/Quiz';
 import Forum from './components/Forum';
+import Modules from './components/Modules';
 import Login from './components/Login';
 import './App.css';
 
@@ -73,6 +74,8 @@ function App() {
         return <Quiz user={user} onQuizComplete={handleQuizComplete} />;
       case 'forum':
         return <Forum user={user} />;
+      case 'modules':
+        return <Modules />;
       default:
         return <Dashboard user={user} refreshKey={dashboardRefreshKey} />;
     }

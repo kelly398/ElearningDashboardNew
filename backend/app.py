@@ -400,6 +400,19 @@ QUESTION_POOL_SEED = [
     },
 ]
 
+MODULE_CATALOG = [
+    {'title': 'Python Foundations', 'category': 'Programming', 'description': 'Variables, control flow, and functions.', 'duration': 60, 'order': 1},
+    {'title': 'SQL Basics', 'category': 'Data', 'description': 'SELECT/WHERE, filtering, aggregation.', 'duration': 50, 'order': 2},
+    {'title': 'Data Visualization', 'category': 'Data', 'description': 'Charting with Matplotlib/Seaborn.', 'duration': 45, 'order': 3},
+    {'title': 'Cloud Computing', 'category': 'Cloud', 'description': 'IaaS/PaaS/SaaS fundamentals and AWS/Azure basics.', 'duration': 60, 'order': 4},
+    {'title': 'Web Design with JavaScript', 'category': 'Frontend', 'description': 'DOM manipulation, events, and UI patterns.', 'duration': 55, 'order': 5},
+    {'title': 'Data Structures', 'category': 'CS', 'description': 'Arrays, stacks, queues, trees.', 'duration': 60, 'order': 6},
+    {'title': 'Deep Learning Basics', 'category': 'AI', 'description': 'Neural networks, CNNs, RNNs.', 'duration': 75, 'order': 7},
+    {'title': 'DevOps Fundamentals', 'category': 'DevOps', 'description': 'CI/CD, containers, and monitoring essentials.', 'duration': 70, 'order': 8},
+    {'title': 'Machine Learning Intro', 'category': 'AI', 'description': 'Regression, classification, and model evaluation.', 'duration': 65, 'order': 9},
+    {'title': 'React Essentials', 'category': 'Frontend', 'description': 'Components, props, hooks, and state management.', 'duration': 65, 'order': 10},
+]
+
 
 def seed_question_pool(force=False):
     """Seed the quiz question pool so every topic has questions available."""
@@ -449,6 +462,39 @@ def seed_question_pool(force=False):
 
         db.session.commit()
         logger.debug('Question pool seeded with %d quizzes', len(QUESTION_POOL_SEED))
+
+
+def seed_module_catalog():
+    with app.app_context():
+        desired = {m['title']: m for m in MODULE_CATALOG}
+        existing = Module.query.all()
+        current_titles = set()
+
+        for module in existing:
+            data = desired.get(module.title)
+            if data:
+                module.category = data['category']
+                module.description = data.get('description')
+                module.duration = data.get('duration')
+                module.order = data.get('order')
+                current_titles.add(module.title)
+            else:
+                db.session.delete(module)
+
+        for title, data in desired.items():
+            if title in current_titles:
+                continue
+            module = Module(
+                title=title,
+                category=data['category'],
+                description=data.get('description'),
+                duration=data.get('duration'),
+                order=data.get('order'),
+            )
+            db.session.add(module)
+
+        db.session.commit()
+        logger.debug('Module catalog synchronized with %d entries', len(desired))
 
 
 def select_question_for_user(quiz, difficulty=None, exclude_ids=None):
@@ -517,6 +563,7 @@ def create_tables_on_startup():
 try:
     create_tables_on_startup()
     seed_question_pool()
+    seed_module_catalog()
 except Exception as e:
     logger.error(f"Startup failed: {str(e)}")
     raise
@@ -709,6 +756,24 @@ def get_badges():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'ok'}), 200
+
+
+@app.route('/modules', methods=['GET'])
+def get_modules():
+    modules = Module.query.order_by(Module.order.asc()).all()
+    return jsonify({
+        'modules': [
+            {
+                'id': module.id,
+                'title': module.title,
+                'category': module.category,
+                'description': module.description,
+                'duration': module.duration,
+                'order': module.order,
+            }
+            for module in modules
+        ]
+    })
 
 
 @app.route('/dashboard/<int:user_id>', methods=['GET'])

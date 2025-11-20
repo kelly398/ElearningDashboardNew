@@ -21,6 +21,7 @@ const Sidebar = ({ setPage, onLogout, onNavigate }) => {
       <h5 className="text-white mb-3">Menu</h5>
       <ListGroup variant="flush" className="mb-3">
         <ListGroup.Item action onClick={() => handleNavigate('dashboard')}>Dashboard</ListGroup.Item>
+        <ListGroup.Item action onClick={() => handleNavigate('modules')}>Modules</ListGroup.Item>
         <ListGroup.Item action onClick={() => handleNavigate('quiz')}>Quiz</ListGroup.Item>
         <ListGroup.Item action onClick={() => handleNavigate('forum')}>Forum</ListGroup.Item>
       </ListGroup>

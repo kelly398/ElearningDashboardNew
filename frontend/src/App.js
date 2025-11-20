@@ -18,11 +18,13 @@ function App() {
 
   const handleLogin = (userData) => {
     setUser(userData);
+    localStorage.setItem('elearn_user', JSON.stringify(userData));
     setPage('dashboard');
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('elearn_user');
     setPage('login');
     setDashboardRefreshKey(0);
     setSidebarOpen(false);
@@ -48,6 +50,22 @@ function App() {
     }
     setSidebarOpen(!isMobile);
   }, [isMobile, user]);
+
+  useEffect(() => {
+    // Restore session after reload
+    try {
+      const stored = localStorage.getItem('elearn_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.id) {
+          setUser(parsed);
+          setPage('dashboard');
+        }
+      }
+    } catch (e) {
+      // ignore JSON/localStorage issues and start fresh
+    }
+  }, []);
 
   const handleToggleSidebar = () => {
     setSidebarOpen((prev) => !prev);

@@ -43,6 +43,7 @@ class Module(db.Model):
     progress_records = db.relationship(
         "UserProgress", back_populates="module", cascade="all, delete-orphan"
     )
+    quizzes = db.relationship("Quiz", back_populates="module", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Module {self.id} - {self.title}>"
@@ -54,6 +55,7 @@ class Quiz(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    module_id = db.Column(db.Integer, db.ForeignKey("modules.id"), nullable=True)
 
     # Relationships
     progress_records = db.relationship(
@@ -62,6 +64,7 @@ class Quiz(db.Model):
     questions = db.relationship(
         "Question", back_populates="quiz", cascade="all, delete-orphan"
     )
+    module = db.relationship("Module", back_populates="quizzes")
 
     def __repr__(self):
         return f"<Quiz {self.id} - {self.title}>"
@@ -146,3 +149,16 @@ class UserBadge(db.Model):
 
     user = db.relationship("User", back_populates="badges")
     badge = db.relationship("Badge", back_populates="users")
+
+
+class UserModule(db.Model):
+    __tablename__ = 'user_modules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('modules.id'), nullable=False)
+    assigned_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'module_id', name='uq_user_module'),
+    )

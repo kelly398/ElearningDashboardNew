@@ -4,7 +4,7 @@ import os
 import time
 import logging
 from flask_cors import CORS
-from sqlalchemy import func
+from sqlalchemy import func, text
 from extensions import db
 from models import (
     User,
@@ -45,7 +45,16 @@ logger = logging.getLogger(__name__)
 POINTS_PER_CORRECT = 20
 SESSION_QUESTION_LIMIT = 5
 AVAILABLE_DIFFICULTIES = ['easy', 'medium', 'hard']
-FORUM_TOPICS = ['General', 'Cloud Computing', 'Web Design with JavaScript', 'Data Structures', 'Deep Learning']
+def ensure_schema_upgrades():
+    with app.app_context():
+        inspector = db.inspect(db.engine)
+        quiz_columns = {col['name'] for col in inspector.get_columns('quizzes')}
+        if 'module_id' not in quiz_columns:
+            logger.info('Adding module_id column to quizzes table')
+            with db.engine.connect() as connection:
+                connection.execute(text('ALTER TABLE quizzes ADD COLUMN module_id INTEGER'))
+        # ensure user_modules table exists
+        db.create_all()
 
 MODULE_CATALOG = [
     {'title': 'Python Foundations', 'category': 'Programming', 'description': 'Variables, control flow, and functions.', 'duration': 60, 'order': 1},
@@ -60,55 +69,57 @@ MODULE_CATALOG = [
     {'title': 'React Essentials', 'category': 'Frontend', 'description': 'Components, props, hooks, and state management.', 'duration': 65, 'order': 10},
 ]
 
+FORUM_TOPICS = ['General'] + [module['title'] for module in MODULE_CATALOG]
 
-def seed_question_pool(force=False):
-    """Seed the quiz question pool so every topic has questions available."""
+
+def seed_question_pool():
+    """Seed quizzes and questions to align with module catalog."""
     with app.app_context():
-        if Question.query.first() and not force:
-            return
+        modules = {m.title: m for m in Module.query.all()}
+        quiz_titles = set(quiz_data['title'] for quiz_data in QUESTION_POOL_SEED)
 
-        if force:
-            Question.query.delete()
-            db.session.commit()
+        # Remove quizzes that are no longer defined
+        for quiz in Quiz.query.all():
+            if quiz.title not in quiz_titles:
+                Question.query.filter_by(quiz_id=quiz.id).delete()
+                db.session.delete(quiz)
 
         for quiz_data in QUESTION_POOL_SEED:
+            module = modules.get(quiz_data['module_title'])
+            if not module:
+                logger.warning('Module "%s" not found for quiz "%s"', quiz_data['module_title'], quiz_data['title'])
+                continue
+
             quiz = Quiz.query.filter_by(title=quiz_data['title']).first()
             if not quiz:
                 quiz = Quiz(
                     title=quiz_data['title'],
                     description=quiz_data.get('description'),
+                    module_id=module.id,
                 )
                 db.session.add(quiz)
                 db.session.flush()
-
-            existing_questions = {q.question_text for q in quiz.questions}
-
-            def add_question(question_data, difficulty_override=None):
-                difficulty_value = question_data.get('difficulty') or difficulty_override or 'medium'
-                if question_data['question'] in existing_questions and not force:
-                    return
-                question_record = Question(
-                    quiz_id=quiz.id,
-                    topic=quiz_data['topic'],
-                    question_text=question_data['question'],
-                    options=question_data['options'],
-                    correct_answer=question_data['answer'],
-                    time_limit_seconds=question_data.get('time_limit', 45),
-                    difficulty=difficulty_value,
-                )
-                db.session.add(question_record)
-                existing_questions.add(question_data['question'])
-
-            if quiz_data.get('difficulty_pools'):
-                for difficulty_level, question_list in quiz_data['difficulty_pools'].items():
-                    for question_data in question_list:
-                        add_question(question_data, difficulty_override=difficulty_level)
             else:
-                for question_data in quiz_data.get('questions', []):
-                    add_question(question_data)
+                quiz.description = quiz_data.get('description')
+                quiz.module_id = module.id
+
+            Question.query.filter_by(quiz_id=quiz.id).delete()
+
+            for difficulty, questions in quiz_data['difficulty_pools'].items():
+                for question_data in questions:
+                    question_record = Question(
+                        quiz_id=quiz.id,
+                        topic=quiz_data.get('topic', module.category),
+                        question_text=question_data['question'],
+                        options=question_data['options'],
+                        correct_answer=question_data['answer'],
+                        time_limit_seconds=question_data.get('time_limit', 45),
+                        difficulty=difficulty,
+                    )
+                    db.session.add(question_record)
 
         db.session.commit()
-        logger.debug('Question pool seeded with %d quizzes', len(QUESTION_POOL_SEED))
+        logger.debug('Question pool synchronized for %d quizzes', len(QUESTION_POOL_SEED))
 
 
 def seed_module_catalog():
@@ -209,8 +220,9 @@ def create_tables_on_startup():
 
 try:
     create_tables_on_startup()
-    seed_question_pool()
+    ensure_schema_upgrades()
     seed_module_catalog()
+    seed_question_pool()
 except Exception as e:
     logger.error(f"Startup failed: {str(e)}")
     raise
@@ -423,6 +435,61 @@ def get_modules():
     })
 
 
+@app.route('/users/<int:user_id>/modules', methods=['GET', 'POST'])
+def manage_user_modules(user_id):
+    user = User.query.get_or_404(user_id)
+    if request.method == 'GET':
+        assignments = (
+            db.session.query(UserModule, Module)
+            .join(Module, UserModule.module_id == Module.id)
+            .filter(UserModule.user_id == user.id)
+            .order_by(Module.order.asc())
+            .all()
+        )
+        return jsonify({
+            'modules': [
+                {
+                    'module_id': module.id,
+                    'title': module.title,
+                    'category': module.category,
+                    'description': module.description,
+                    'duration': module.duration,
+                    'assigned_at': assignment.assigned_at.isoformat(),
+                }
+                for assignment, module in assignments
+            ]
+        })
+
+    data = request.get_json() or {}
+    module_ids = data.get('module_ids')
+    if not isinstance(module_ids, list):
+        return jsonify({'message': 'module_ids must be provided as a list'}), 400
+
+    valid_ids = {m.id for m in Module.query.filter(Module.id.in_(module_ids)).all()}
+    invalid_ids = set(module_ids) - valid_ids
+    if invalid_ids:
+        return jsonify({'message': f'Invalid module IDs: {sorted(invalid_ids)}'}), 400
+
+    # Remove assignments not in new list
+    UserModule.query.filter(
+        UserModule.user_id == user.id,
+        ~UserModule.module_id.in_(valid_ids)
+    ).delete(synchronize_session=False)
+
+    existing_assignments = {
+        assignment.module_id
+        for assignment in UserModule.query.filter_by(user_id=user.id).all()
+    }
+
+    for module_id in valid_ids:
+        if module_id in existing_assignments:
+            continue
+        db.session.add(UserModule(user_id=user.id, module_id=module_id))
+
+    db.session.commit()
+    return jsonify({'message': 'Modules updated successfully'})
+
+
 @app.route('/dashboard/<int:user_id>', methods=['GET'])
 def get_user_dashboard(user_id):
     user = User.query.get_or_404(user_id)
@@ -493,7 +560,22 @@ def get_user_dashboard(user_id):
 
 @app.route('/quizzes', methods=['GET'])
 def list_quizzes():
-    quizzes = Quiz.query.all()
+    user_id = request.args.get('user_id', type=int)
+    quizzes_query = Quiz.query
+    assigned_module_ids = []
+    if user_id:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        assigned_module_ids = [
+            assignment.module_id
+            for assignment in UserModule.query.filter_by(user_id=user.id).all()
+        ]
+        if not assigned_module_ids:
+            return jsonify({'quizzes': [], 'message': 'No modules selected. Choose modules to unlock quizzes.'})
+        quizzes_query = quizzes_query.filter(Quiz.module_id.in_(assigned_module_ids))
+
+    quizzes = quizzes_query.all()
     response = []
     for quiz in quizzes:
         response.append({
@@ -502,22 +584,32 @@ def list_quizzes():
             'description': quiz.description,
             'question_count': len(quiz.questions),
             'topic': quiz.questions[0].topic if quiz.questions else None,
+            'module_id': quiz.module_id,
+            'module_title': quiz.module.title if quiz.module else None,
         })
     return jsonify({'quizzes': response})
 
 
 @app.route('/quiz/<int:quiz_id>/questions', methods=['GET'])
 def get_quiz_questions(quiz_id):
-    limit = request.args.get('limit', default=5, type=int)
-    topic = request.args.get('topic')
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'message': 'user_id is required'}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
     quiz = Quiz.query.get_or_404(quiz_id)
+    user_modules = {
+        assignment.module_id
+        for assignment in UserModule.query.filter_by(user_id=user.id).all()
+    }
+    if quiz.module_id and quiz.module_id not in user_modules:
+        return jsonify({'message': 'Module not selected for this quiz'}), 403
 
-    limit = 5 if not limit or limit <= 0 else min(limit, 20)
     query = Question.query.filter_by(quiz_id=quiz.id)
-    if topic:
-        query = query.filter(Question.topic == topic)
-
-    questions = query.order_by(func.random()).limit(limit).all()
+    questions = query.order_by(func.random()).limit(SESSION_QUESTION_LIMIT).all()
     if not questions:
         return jsonify({'message': 'No questions available for this quiz'}), 404
 
@@ -538,6 +630,7 @@ def get_quiz_questions(quiz_id):
             'title': quiz.title,
             'description': quiz.description,
             'question_count': len(quiz.questions),
+            'module_id': quiz.module_id,
         },
         'questions': question_payload,
     })
@@ -655,6 +748,13 @@ def submit_quiz_answer(quiz_id):
     if not user:
         return jsonify({'message': 'User not found'}), 404
 
+    user_module_ids = {
+        assignment.module_id
+        for assignment in UserModule.query.filter_by(user_id=user.id).all()
+    }
+    if quiz.module_id and quiz.module_id not in user_module_ids:
+        return jsonify({'message': 'Module not selected for this quiz'}), 403
+
     allowed_time = question.time_limit_seconds or 0
     if not time_expired and time_taken is not None and allowed_time and time_taken > allowed_time:
         time_expired = True
@@ -664,7 +764,7 @@ def submit_quiz_answer(quiz_id):
         progress = UserProgress(
             user_id=user.id,
             quiz_id=quiz.id,
-            module_id=None,
+            module_id=quiz.module_id,
             status='Not Started',
             score=0,
             streak_count=0,
@@ -674,6 +774,8 @@ def submit_quiz_answer(quiz_id):
         )
         db.session.add(progress)
         db.session.commit()
+    elif progress.module_id != quiz.module_id:
+        progress.module_id = quiz.module_id
 
     if progress.question_history is None:
         progress.question_history = []

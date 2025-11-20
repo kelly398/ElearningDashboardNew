@@ -71,11 +71,11 @@ function App() {
       case 'dashboard':
         return <Dashboard user={user} refreshKey={dashboardRefreshKey} />;
       case 'quiz':
-        return <Quiz user={user} onQuizComplete={handleQuizComplete} />;
+        return <Quiz user={user} onQuizComplete={handleQuizComplete} goToModules={() => setPage('modules')} />;
       case 'forum':
         return <Forum user={user} />;
       case 'modules':
-        return <Modules />;
+        return <Modules user={user} />;
       default:
         return <Dashboard user={user} refreshKey={dashboardRefreshKey} />;
     }

@@ -34,7 +34,23 @@ logger = logging.getLogger(__name__)
 POINTS_PER_CORRECT = 20
 SESSION_QUESTION_LIMIT = 5
 AVAILABLE_DIFFICULTIES = ['easy', 'medium', 'hard']
-FORUM_TOPICS = ['General', 'Cloud Computing', 'Web Design with JavaScript', 'Data Structures', 'Deep Learning']
+FORUM_TOPICS_BASE = ['General']
+
+def get_forum_topics():
+    """Return forum topics including base topics and current module titles."""
+    topics = []
+    for t in FORUM_TOPICS_BASE:
+        if t not in topics:
+            topics.append(t)
+    try:
+        modules = Module.query.order_by(Module.title).all()
+        for m in modules:
+            if m.title and m.title not in topics:
+                topics.append(m.title)
+    except Exception:
+        # If DB not ready yet, just return base topics
+        pass
+    return topics
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -293,6 +309,8 @@ def signup():
 # Basic forum endpoint
 @app.route('/forum', methods=['GET', 'POST'])
 def forum():
+    topics = get_forum_topics()
+
     if request.method == 'POST':
         data = request.json or {}
         user_id = data.get('user_id')
@@ -302,7 +320,7 @@ def forum():
         if not user:
             return jsonify({'message': 'User not found'}), 404
         topic = (data.get('topic') or 'General').strip() or 'General'
-        if topic not in FORUM_TOPICS:
+        if topic not in topics:
             topic = 'General'
         thread_id = data.get('thread_id')
         if thread_id:
@@ -343,7 +361,7 @@ def forum():
 
     return jsonify({
         'posts': threads,
-        'topics': FORUM_TOPICS
+        'topics': topics
     })
 
 # Badges endpoint

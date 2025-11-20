@@ -67,8 +67,44 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
         const data = await res.json();
         if (res.ok) {
           const progressData = data.progress || [];
-          setProgress(progressData);
-          const computedBadges = progressData.map((item) => {
+
+          // Group by module and average the last 5 quiz results for that module
+          const grouped = {};
+          progressData.forEach((item) => {
+            const key = item.module_id || item.module_name || item.id;
+            const percent = typeof item.percent_complete === 'number'
+              ? item.percent_complete
+              : Math.min(100, item.score || 0);
+            if (!grouped[key]) {
+              grouped[key] = {
+                module_id: item.module_id,
+                module_name: item.module_name || 'Learning Progress',
+                status: item.status,
+                streak: item.streak || 0,
+                percents: [],
+              };
+            }
+            grouped[key].percents.push(percent);
+          });
+
+          const aggregated = Object.values(grouped).map((g) => {
+            const lastFive = g.percents.slice(-5);
+            const avg = lastFive.length
+              ? Math.round(lastFive.reduce((sum, v) => sum + v, 0) / lastFive.length)
+              : 0;
+            return {
+              module_id: g.module_id,
+              module_name: g.module_name,
+              status: g.status,
+              percent_complete: avg,
+              attempts: lastFive.length,
+              streak: g.streak,
+            };
+          });
+
+          setProgress(aggregated);
+
+          const computedBadges = aggregated.map((item) => {
             const badge = badgeFromPercent(item.percent_complete);
             return {
               ...badge,
@@ -117,43 +153,44 @@ const Dashboard = ({ user, refreshKey = 0 }) => {
       return <p className="text-muted mt-3">No progress yet. Complete a quiz to get started!</p>;
     }
 
-    return progress.map((p, i) => {
-      const percent = typeof p.percent_complete === 'number' ? p.percent_complete : Math.min(100, p.score || 0);
-      return (
-        <Card key={i} className="mb-3 shadow-sm">
-          <Card.Body>
-            <Card.Title>{p.module_name}</Card.Title>
-            <Card.Text>Status: <strong>{p.status}</strong></Card.Text>
-            <div className="position-relative">
-              <ProgressBar
-                now={percent}
-                label={`${percent}%`}
-                animated={percent > 0 && percent < 100}
-                striped
-                variant={
-                  percent === 100 ? 'success' :
-                  percent >= 70 ? 'info' :
-                  percent >= 50 ? 'warning' :
-                  percent > 0 ? 'danger' : 'secondary'
-                }
-                style={{
-                  height: '40px',
-                  fontSize: '1.1rem',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                className="text-dark"
-              />
-            </div>
-            <small className="text-muted d-block mt-2">
-              Score: {p.score || 0} | Streak: {p.streak || 0} days
-            </small>
-          </Card.Body>
-        </Card>
-      );
-    });
+    return (
+      <>
+        {progress.map((p, i) => {
+          const percent = typeof p.percent_complete === 'number' ? p.percent_complete : Math.min(100, p.score || 0);
+          return (
+            <Card key={i} className="mb-3 shadow-sm">
+              <Card.Body>
+                <Card.Title>{p.module_name}</Card.Title>
+                <Card.Text>Status: <strong>{p.status}</strong></Card.Text>
+                <div className="position-relative">
+                  <ProgressBar
+                    now={percent}
+                    label={`${percent}%`}
+                    animated={percent > 0 && percent < 100}
+                    striped
+                    variant={
+                      percent === 100 ? 'success' :
+                      percent >= 70 ? 'info' :
+                      percent >= 50 ? 'warning' :
+                      percent > 0 ? 'danger' : 'secondary'
+                    }
+                    style={{
+                      height: '40px',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    className="text-dark"
+                  />
+                </div>
+              </Card.Body>
+            </Card>
+          );
+        })}
+      </>
+    );
   };
 
   const renderBadges = () => {

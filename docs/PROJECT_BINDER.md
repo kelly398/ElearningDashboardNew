@@ -144,6 +144,14 @@ Key differentiators:
 
 ---
 
+## 8. Quick Reference / README Link
+
+- A concise setup and deployment guide lives in `README.md` at the repo root. It covers local commands, env vars (`REACT_APP_API_BASE`, `SQLALCHEMY_DATABASE_URI`), seeding from `backend/question_seed_data.py`, and the `/health` check.
+- Frontend reads `REACT_APP_API_BASE`; quizzes are gated to modules the learner selects.
+- Backend seeds questions on startup; keep `backend/question_seed_data.py` current with module/content updates.
+
+---
+
 ### Contact / Ownership
 
 - **Product Owner:** _Add name/email_

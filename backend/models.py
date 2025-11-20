@@ -17,6 +17,7 @@ class User(db.Model):
     )
     forum_posts = db.relationship("ForumPost", backref="author", cascade="all, delete-orphan")
     badges = db.relationship("UserBadge", back_populates="user", cascade="all, delete-orphan")
+    module_selections = db.relationship("UserModule", back_populates="user", cascade="all, delete-orphan")
 
     # Password methods
     def set_password(self, password):
@@ -44,6 +45,7 @@ class Module(db.Model):
         "UserProgress", back_populates="module", cascade="all, delete-orphan"
     )
     quizzes = db.relationship("Quiz", back_populates="module", cascade="all, delete-orphan")
+    user_assignments = db.relationship("UserModule", back_populates="module", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Module {self.id} - {self.title}>"
@@ -159,6 +161,9 @@ class UserModule(db.Model):
     module_id = db.Column(db.Integer, db.ForeignKey('modules.id'), nullable=False)
     assigned_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    __table_args__ = (
-        db.UniqueConstraint('user_id', 'module_id', name='uq_user_module'),
-    )
+    assigned_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    user = db.relationship('User', back_populates='module_selections')
+    module = db.relationship('Module', back_populates='user_assignments')
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'module_id', name='uq_user_module'),)

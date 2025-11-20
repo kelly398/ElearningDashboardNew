@@ -4,7 +4,7 @@ import os
 import time
 import logging
 from flask_cors import CORS
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from extensions import db
 from models import (
     User,
@@ -17,22 +17,10 @@ from models import (
     UserBadge,
     UserModule,
 )
-from question_seed_data import QUESTION_POOL_SEED
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.environ.get('DATABASE_URL')
-if db_path:
-    database_uri = db_path
-else:
-    persistent_path = os.environ.get('PERSISTENT_DB_PATH', os.path.join(basedir, 'db.sqlite'))
-    if persistent_path.startswith('/app'):
-        os.makedirs(os.path.dirname(persistent_path), exist_ok=True)
-        database_uri = f"sqlite:////{persistent_path.lstrip('/')}"
-    else:
-        database_uri = f"sqlite:///{persistent_path}"
-
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(basedir, 'db.sqlite')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app)
 print("Using database file:", os.path.abspath("db.sqlite"))
@@ -47,17 +35,359 @@ SESSION_QUESTION_LIMIT = 5
 AVAILABLE_DIFFICULTIES = ['easy', 'medium', 'hard']
 FORUM_TOPICS = ['General', 'Cloud Computing', 'Web Design with JavaScript', 'Data Structures', 'Deep Learning']
 
-MODULE_CATALOG = [
-    {'title': 'Python Foundations', 'category': 'Programming', 'description': 'Variables, control flow, and functions.', 'duration': 60, 'order': 1},
-    {'title': 'SQL Basics', 'category': 'Data', 'description': 'SELECT/WHERE, filtering, aggregation.', 'duration': 50, 'order': 2},
-    {'title': 'Data Visualization', 'category': 'Data', 'description': 'Charting with Matplotlib/Seaborn.', 'duration': 45, 'order': 3},
-    {'title': 'Cloud Computing', 'category': 'Cloud', 'description': 'IaaS/PaaS/SaaS fundamentals and AWS/Azure basics.', 'duration': 60, 'order': 4},
-    {'title': 'Web Design with JavaScript', 'category': 'Frontend', 'description': 'DOM manipulation, events, and UI patterns.', 'duration': 55, 'order': 5},
-    {'title': 'Data Structures', 'category': 'CS', 'description': 'Arrays, stacks, queues, trees.', 'duration': 60, 'order': 6},
-    {'title': 'Deep Learning Basics', 'category': 'AI', 'description': 'Neural networks, CNNs, RNNs.', 'duration': 75, 'order': 7},
-    {'title': 'DevOps Fundamentals', 'category': 'DevOps', 'description': 'CI/CD, containers, and monitoring essentials.', 'duration': 70, 'order': 8},
-    {'title': 'Machine Learning Intro', 'category': 'AI', 'description': 'Regression, classification, and model evaluation.', 'duration': 65, 'order': 9},
-    {'title': 'React Essentials', 'category': 'Frontend', 'description': 'Components, props, hooks, and state management.', 'duration': 65, 'order': 10},
+QUESTION_POOL_SEED = [
+    {
+        'title': 'Cloud Computing',
+        'description': 'Assess core cloud-computing concepts.',
+        'topic': 'Cloud Computing',
+        'difficulty_pools': {
+            'easy': [
+                {
+                    'question': 'What does SaaS stand for?',
+                    'options': ['Software as a Service', 'Storage as a Service', 'Security as a Service', 'Server as a Service'],
+                    'answer': 'Software as a Service',
+                },
+                {
+                    'question': 'Which model lets you rent virtual machines?',
+                    'options': ['IaaS', 'SaaS', 'PaaS', 'FaaS'],
+                    'answer': 'IaaS',
+                },
+                {
+                    'question': 'AWS EC2 is an example of which service type?',
+                    'options': ['SaaS', 'IaaS', 'PaaS', 'On-prem'],
+                    'answer': 'IaaS',
+                },
+                {
+                    'question': 'Which storage option is fully managed object storage?',
+                    'options': ['Amazon S3', 'Amazon EC2', 'AWS Lambda', 'Amazon RDS'],
+                    'answer': 'Amazon S3',
+                },
+                {
+                    'question': 'Which provider offers Azure?',
+                    'options': ['Google', 'Microsoft', 'Amazon', 'IBM'],
+                    'answer': 'Microsoft',
+                },
+            ],
+            'medium': [
+                {
+                    'question': 'What does PaaS primarily provide?',
+                    'options': ['Full applications', 'Hardware only', 'Managed runtime and tools', 'Networking gear'],
+                    'answer': 'Managed runtime and tools',
+                },
+                {
+                    'question': 'Which AWS service lets you run code without managing servers?',
+                    'options': ['EC2', 'Lambda', 'EBS', 'Route53'],
+                    'answer': 'Lambda',
+                },
+                {
+                    'question': 'A Virtual Private Cloud (VPC) provides what?',
+                    'options': ['Physical servers', 'Isolated network within AWS', 'Database backups', 'User identities'],
+                    'answer': 'Isolated network within AWS',
+                },
+                {
+                    'question': 'Which service is best for delivering cached content globally?',
+                    'options': ['CloudFront', 'RDS', 'SQS', 'Glue'],
+                    'answer': 'CloudFront',
+                },
+                {
+                    'question': 'What is auto scaling used for?',
+                    'options': ['Scaling storage only', 'Automatically adjusting compute capacity', 'Encrypting data at rest', 'Monitoring logs'],
+                    'answer': 'Automatically adjusting compute capacity',
+                },
+            ],
+            'hard': [
+                {
+                    'question': 'Cloud bursting is primarily used to:',
+                    'options': ['Move data to cold storage', 'Handle peak loads by extending to public cloud', 'Encrypt traffic', 'Turn off idle VMs'],
+                    'answer': 'Handle peak loads by extending to public cloud',
+                },
+                {
+                    'question': 'Which AWS service provides managed Kubernetes?',
+                    'options': ['ECS', 'EKS', 'Fargate', 'Lightsail'],
+                    'answer': 'EKS',
+                },
+                {
+                    'question': 'What does multi-tenancy mean in cloud architecture?',
+                    'options': ['Single user per resource', 'Multiple customers share resources securely', 'Dedicated hardware per customer', 'Multiple clouds linked together'],
+                    'answer': 'Multiple customers share resources securely',
+                },
+                {
+                    'question': 'Which service provides petabyte-scale data transfer using physical devices?',
+                    'options': ['Snowball', 'CloudTrail', 'Athena', 'Elastic Beanstalk'],
+                    'answer': 'Snowball',
+                },
+                {
+                    'question': 'What is the main benefit of spot instances?',
+                    'options': ['Predictable pricing', 'Low cost for interruptible workloads', 'Dedicated compliance', 'Persistent storage'],
+                    'answer': 'Low cost for interruptible workloads',
+                },
+            ],
+        },
+    },
+    {
+        'title': 'Web Design with JavaScript',
+        'description': 'JavaScript and front-end fundamentals.',
+        'topic': 'Web Design with JavaScript',
+        'difficulty_pools': {
+            'easy': [
+                {
+                    'question': 'What does HTML stand for?',
+                    'options': ['HyperText Markup Language', 'HighText Markdown Language', 'Hyperlink Markup Language', 'Home Tool Markup Language'],
+                    'answer': 'HyperText Markup Language',
+                },
+                {
+                    'question': 'Which tag wraps JavaScript inside HTML?',
+                    'options': ['<script>', '<style>', '<js>', '<code>'],
+                    'answer': '<script>',
+                },
+                {
+                    'question': 'What does CSS control?',
+                    'options': ['Structure', 'Behavior', 'Styling', 'Database'],
+                    'answer': 'Styling',
+                },
+                {
+                    'question': 'Which operator assigns a value?',
+                    'options': ['=', '==', '===', ':='],
+                    'answer': '=',
+                },
+                {
+                    'question': 'Which keyword declares a block-scoped variable?',
+                    'options': ['var', 'static', 'let', 'goto'],
+                    'answer': 'let',
+                },
+            ],
+            'medium': [
+                {
+                    'question': 'What does the DOM represent?',
+                    'options': ['Visual layout', 'Document Object Model', 'Database map', 'Design-only mockup'],
+                    'answer': 'Document Object Model',
+                },
+                {
+                    'question': 'Which array method adds an element to the end?',
+                    'options': ['shift()', 'unshift()', 'push()', 'pop()'],
+                    'answer': 'push()',
+                },
+                {
+                    'question': 'What does === compare?',
+                    'options': ['Values only', 'Types only', 'Value and type', 'References only'],
+                    'answer': 'Value and type',
+                },
+                {
+                    'question': 'What is event delegation?',
+                    'options': ['Binding every element', 'Handling events at a common ancestor', 'Preventing events', 'Random event firing'],
+                    'answer': 'Handling events at a common ancestor',
+                },
+                {
+                    'question': 'Which hook replaces componentDidMount in React?',
+                    'options': ['useState', 'useEffect', 'useMemo', 'useReducer'],
+                    'answer': 'useEffect',
+                },
+            ],
+            'hard': [
+                {
+                    'question': 'What is a closure?',
+                    'options': ['A CSS trick', 'A function bundled with references to its lexical scope', 'A database transaction', 'A loop construct'],
+                    'answer': 'A function bundled with references to its lexical scope',
+                },
+                {
+                    'question': 'Which pattern avoids deeply nested callbacks?',
+                    'options': ['Event bubbling', 'Promises/async-await', 'Shadow DOM', 'Box model'],
+                    'answer': 'Promises/async-await',
+                },
+                {
+                    'question': 'What does virtual DOM improve?',
+                    'options': ['Network access', 'DOM diffing performance', 'Database indexing', 'CSS specificity'],
+                    'answer': 'DOM diffing performance',
+                },
+                {
+                    'question': 'Which API allows drawing 2D graphics in JS?',
+                    'options': ['Canvas API', 'Fetch API', 'WebRTC', 'Service Worker'],
+                    'answer': 'Canvas API',
+                },
+                {
+                    'question': 'What is tree shaking used for?',
+                    'options': ['Removing unused code during bundling', 'Styling DOM nodes', 'Testing components', 'Cleaning databases'],
+                    'answer': 'Removing unused code during bundling',
+                },
+            ],
+        },
+    },
+    {
+        'title': 'Data Structures',
+        'description': 'Core data structure knowledge check.',
+        'topic': 'Data Structures',
+        'difficulty_pools': {
+            'easy': [
+                {
+                    'question': 'Which structure uses FIFO?',
+                    'options': ['Stack', 'Queue', 'Tree', 'Graph'],
+                    'answer': 'Queue',
+                },
+                {
+                    'question': 'Which uses LIFO?',
+                    'options': ['Array', 'Stack', 'Graph', 'Queue'],
+                    'answer': 'Stack',
+                },
+                {
+                    'question': 'Which structure stores key-value pairs?',
+                    'options': ['Array', 'Hash map', 'Stack', 'Queue'],
+                    'answer': 'Hash map',
+                },
+                {
+                    'question': 'An array provides?',
+                    'options': ['Constant-time indexed access', 'Random node links', 'No order guarantee', 'Graph traversal'],
+                    'answer': 'Constant-time indexed access',
+                },
+                {
+                    'question': 'Which structure is hierarchical?',
+                    'options': ['Stack', 'Queue', 'Tree', 'Array'],
+                    'answer': 'Tree',
+                },
+            ],
+            'medium': [
+                {
+                    'question': 'Which traversal visits nodes level by level?',
+                    'options': ['DFS', 'BFS', 'In-order', 'Post-order'],
+                    'answer': 'BFS',
+                },
+                {
+                    'question': 'What is the time complexity of binary search on a sorted array?',
+                    'options': ['O(n)', 'O(log n)', 'O(1)', 'O(n log n)'],
+                    'answer': 'O(log n)',
+                },
+                {
+                    'question': 'Which structure is best for implementing recursion tracking?',
+                    'options': ['Queue', 'Stack', 'Heap', 'Graph'],
+                    'answer': 'Stack',
+                },
+                {
+                    'question': 'Which data structure is ideal for priority scheduling?',
+                    'options': ['Hash table', 'Priority queue/heap', 'Linked list', 'Array'],
+                    'answer': 'Priority queue/heap',
+                },
+                {
+                    'question': 'What does amortized analysis explain?',
+                    'options': ['Worst case only', 'Average performance over sequences of operations', 'Memory usage', 'Network latency'],
+                    'answer': 'Average performance over sequences of operations',
+                },
+            ],
+            'hard': [
+                {
+                    'question': 'A red-black tree maintains:',
+                    'options': ['Exact balance', 'Approximate balance via recoloring/rotations', 'Min-heap invariant', 'Adjacency lists'],
+                    'answer': 'Approximate balance via recoloring/rotations',
+                },
+                {
+                    'question': 'What is the typical complexity of Dijkstra using a binary heap?',
+                    'options': ['O(E + V)', 'O(E log V)', 'O(V^2)', 'O(log V)'],
+                    'answer': 'O(E log V)',
+                },
+                {
+                    'question': 'Which hash conflict technique keeps a linked list at each bucket?',
+                    'options': ['Open addressing', 'Separate chaining', 'Double hashing', 'Quadratic probing'],
+                    'answer': 'Separate chaining',
+                },
+                {
+                    'question': 'What is the space complexity of storing a graph with adjacency matrix?',
+                    'options': ['O(V)', 'O(E)', 'O(V^2)', 'O(log V)'],
+                    'answer': 'O(V^2)',
+                },
+                {
+                    'question': 'Which structure underpins union-find efficiency?',
+                    'options': ['Union by rank with path compression', 'Plain arrays', 'Binary heaps', 'Skip lists'],
+                    'answer': 'Union by rank with path compression',
+                },
+            ],
+        },
+    },
+    {
+        'title': 'Deep Learning',
+        'description': 'Deep learning fundamentals and terminology.',
+        'topic': 'Deep Learning',
+        'difficulty_pools': {
+            'easy': [
+                {
+                    'question': 'Which activation outputs values between 0 and 1?',
+                    'options': ['ReLU', 'Sigmoid', 'Linear', 'Softmax'],
+                    'answer': 'Sigmoid',
+                },
+                {
+                    'question': 'What does GPU stand for?',
+                    'options': ['General Processing Unit', 'Graphics Processing Unit', 'Graphical Programming Utility', 'Global Processing Unit'],
+                    'answer': 'Graphics Processing Unit',
+                },
+                {
+                    'question': 'What is the basic unit in a neural network?',
+                    'options': ['Layer', 'Neuron', 'Batch', 'Epoch'],
+                    'answer': 'Neuron',
+                },
+                {
+                    'question': 'What is the purpose of a loss function?',
+                    'options': ['Measure model error', 'Store data', 'Visualize layers', 'Compress inputs'],
+                    'answer': 'Measure model error',
+                },
+                {
+                    'question': 'Which library is commonly used for deep learning in Python?',
+                    'options': ['NumPy', 'TensorFlow', 'Matplotlib', 'Selenium'],
+                    'answer': 'TensorFlow',
+                },
+            ],
+            'medium': [
+                {
+                    'question': 'What does backpropagation compute?',
+                    'options': ['Forward pass', 'Gradient of loss wrt weights', 'Batch size', 'Activation outputs only'],
+                    'answer': 'Gradient of loss wrt weights',
+                },
+                {
+                    'question': 'Dropout is used to:',
+                    'options': ['Speed up gradients', 'Reduce overfitting', 'Store parameters', 'Normalize batches'],
+                    'answer': 'Reduce overfitting',
+                },
+                {
+                    'question': 'Which layer is key in CNNs for spatial feature extraction?',
+                    'options': ['Fully connected', 'Convolutional', 'Recurrent', 'Embedding'],
+                    'answer': 'Convolutional',
+                },
+                {
+                    'question': 'Batch normalization primarily helps by:',
+                    'options': ['Converging faster and stabilizing training', 'Saving memory', 'Replacing dropout', 'Reducing dataset size'],
+                    'answer': 'Converging faster and stabilizing training',
+                },
+                {
+                    'question': 'Which optimizer adapts learning rates per parameter?',
+                    'options': ['SGD', 'Adam', 'Momentum only', 'RMSProp only'],
+                    'answer': 'Adam',
+                },
+            ],
+            'hard': [
+                {
+                    'question': 'What does the attention mechanism allow models to do?',
+                    'options': ['Ignore all context', 'Focus on relevant parts of the input sequence dynamically', 'Remove positional encoding', 'Train without gradients'],
+                    'answer': 'Focus on relevant parts of the input sequence dynamically',
+                },
+                {
+                    'question': 'Which architecture relies entirely on attention mechanisms?',
+                    'options': ['CNN', 'Transformer', 'RNN', 'GAN'],
+                    'answer': 'Transformer',
+                },
+                {
+                    'question': 'What is the vanishing gradient problem?',
+                    'options': ['Gradients grow uncontrollably', 'Gradients shrink to zero through deep layers', 'Weights explode', 'Batch sizes vanish'],
+                    'answer': 'Gradients shrink to zero through deep layers',
+                },
+                {
+                    'question': 'GAN training optimizes which two networks?',
+                    'options': ['Autoencoder and decoder', 'Generator and discriminator', 'Encoder and classifier', 'Critic and transformer'],
+                    'answer': 'Generator and discriminator',
+                },
+                {
+                    'question': 'What does the softmax function output?',
+                    'options': ['Unbounded values', 'Normalized probability distribution', 'Binary result', 'Gradients only'],
+                    'answer': 'Normalized probability distribution',
+                },
+            ],
+        },
+    },
 ]
 
 
@@ -111,39 +441,6 @@ def seed_question_pool(force=False):
         logger.debug('Question pool seeded with %d quizzes', len(QUESTION_POOL_SEED))
 
 
-def seed_module_catalog():
-    with app.app_context():
-        desired = {m['title']: m for m in MODULE_CATALOG}
-        existing = Module.query.all()
-        current_titles = set()
-
-        for module in existing:
-            data = desired.get(module.title)
-            if data:
-                module.category = data['category']
-                module.description = data.get('description')
-                module.duration = data.get('duration')
-                module.order = data.get('order')
-                current_titles.add(module.title)
-            else:
-                db.session.delete(module)
-
-        for title, data in desired.items():
-            if title in current_titles:
-                continue
-            module = Module(
-                title=title,
-                category=data['category'],
-                description=data.get('description'),
-                duration=data.get('duration'),
-                order=data.get('order'),
-            )
-            db.session.add(module)
-
-        db.session.commit()
-        logger.debug('Module catalog synchronized with %d entries', len(desired))
-
-
 def select_question_for_user(quiz, difficulty=None, exclude_ids=None):
     query = Question.query.filter_by(quiz_id=quiz.id)
     if difficulty:
@@ -187,6 +484,14 @@ def ordered_difficulty_sequence(current):
     # Ensure current difficulty first, then harder levels, then wrap to easier ones
     return sequence
 
+
+def user_has_module_access(user_id, module_id):
+    if not module_id:
+        return True
+    if not user_id:
+        return False
+    return UserModule.query.filter_by(user_id=user_id, module_id=module_id).first() is not None
+
 # Ensure DB file exists and is writable
 if not os.path.exists('db.sqlite'):
     open('db.sqlite', 'a').close()
@@ -210,7 +515,6 @@ def create_tables_on_startup():
 try:
     create_tables_on_startup()
     seed_question_pool()
-    seed_module_catalog()
 except Exception as e:
     logger.error(f"Startup failed: {str(e)}")
     raise
@@ -400,29 +704,6 @@ def get_badges():
     return jsonify({'badges': [{'id': b.id, 'name': b.name, 'description': b.description} for b in badges]})
 
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'ok'}), 200
-
-
-@app.route('/modules', methods=['GET'])
-def get_modules():
-    modules = Module.query.order_by(Module.order.asc()).all()
-    return jsonify({
-        'modules': [
-            {
-                'id': module.id,
-                'title': module.title,
-                'category': module.category,
-                'description': module.description,
-                'duration': module.duration,
-                'order': module.order,
-            }
-            for module in modules
-        ]
-    })
-
-
 @app.route('/dashboard/<int:user_id>', methods=['GET'])
 def get_user_dashboard(user_id):
     user = User.query.get_or_404(user_id)
@@ -491,9 +772,114 @@ def get_user_dashboard(user_id):
     })
 
 
+@app.route('/modules', methods=['GET'])
+def list_modules():
+    modules = Module.query.order_by(Module.order.asc(), Module.id.asc()).all()
+    module_payload = []
+    for module in modules:
+        module_payload.append({
+            'id': module.id,
+            'title': module.title,
+            'category': module.category,
+            'description': module.description,
+            'duration': module.duration,
+            'order': module.order,
+        })
+
+    return jsonify({'modules': module_payload})
+
+
+@app.route('/users/<int:user_id>/modules', methods=['GET', 'POST'])
+def manage_user_modules(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if request.method == 'GET':
+        assignments = UserModule.query.filter_by(user_id=user.id).all()
+        response_payload = []
+        for assignment in assignments:
+            module = assignment.module
+            response_payload.append({
+                'id': assignment.id,
+                'module_id': assignment.module_id,
+                'title': module.title if module else None,
+                'category': module.category if module else None,
+                'assigned_at': assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            })
+        return jsonify({'modules': response_payload})
+
+    data = request.get_json() or {}
+    module_ids = data.get('module_ids', [])
+    if module_ids is None:
+        module_ids = []
+    if not isinstance(module_ids, list):
+        return jsonify({'message': 'module_ids must be a list'}), 400
+
+    normalized_ids = set()
+    for mid in module_ids:
+        try:
+            normalized_ids.add(int(mid))
+        except (ValueError, TypeError):
+            return jsonify({'message': 'module_ids must be integers'}), 400
+
+    if normalized_ids:
+        modules = Module.query.filter(Module.id.in_(normalized_ids)).all()
+        found_ids = {module.id for module in modules}
+        missing = normalized_ids - found_ids
+        if missing:
+            return jsonify({'message': f'Modules not found: {sorted(list(missing))}'}), 404
+    else:
+        modules = []
+
+    assignments = UserModule.query.filter_by(user_id=user.id).all()
+    existing_ids = {assignment.module_id for assignment in assignments}
+
+    for assignment in assignments:
+        if assignment.module_id not in normalized_ids:
+            db.session.delete(assignment)
+
+    for module in modules:
+        if module.id not in existing_ids:
+            db.session.add(UserModule(user_id=user.id, module_id=module.id))
+
+    db.session.commit()
+
+    updated_assignments = UserModule.query.filter_by(user_id=user.id).all()
+    response_payload = []
+    for assignment in updated_assignments:
+        module = assignment.module
+        response_payload.append({
+            'id': assignment.id,
+            'module_id': assignment.module_id,
+            'title': module.title if module else None,
+            'category': module.category if module else None,
+            'assigned_at': assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+        })
+
+    return jsonify({'message': 'Modules updated successfully', 'modules': response_payload})
+
+
 @app.route('/quizzes', methods=['GET'])
 def list_quizzes():
-    quizzes = Quiz.query.all()
+    user_id = request.args.get('user_id', type=int)
+    if not user_id:
+        return jsonify({'quizzes': [], 'message': 'user_id is required'}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'quizzes': [], 'message': 'User not found'}), 404
+
+    assignments = UserModule.query.filter_by(user_id=user.id).all()
+    selected_module_ids = [assignment.module_id for assignment in assignments if assignment.module_id]
+    if not selected_module_ids:
+        return jsonify({
+            'quizzes': [],
+            'message': 'Select at least one module from the catalog to unlock quizzes.'
+        })
+
+    quizzes = Quiz.query.filter(
+        or_(Quiz.module_id.is_(None), Quiz.module_id.in_(selected_module_ids))
+    ).order_by(Quiz.title.asc()).all()
+
     response = []
     for quiz in quizzes:
         response.append({
@@ -502,6 +888,8 @@ def list_quizzes():
             'description': quiz.description,
             'question_count': len(quiz.questions),
             'topic': quiz.questions[0].topic if quiz.questions else None,
+            'module_id': quiz.module_id,
+            'module_title': quiz.module.title if quiz.module else None,
         })
     return jsonify({'quizzes': response})
 
@@ -556,6 +944,8 @@ def get_next_question(quiz_id):
         return jsonify({'message': 'User not found'}), 404
 
     quiz = Quiz.query.get_or_404(quiz_id)
+    if not user_has_module_access(user.id, quiz.module_id):
+        return jsonify({'message': 'Please select this module in the catalog before taking the quiz.'}), 403
     progress = UserProgress.query.filter_by(user_id=user.id, quiz_id=quiz.id).first()
     if not progress:
         progress = UserProgress(
@@ -654,6 +1044,9 @@ def submit_quiz_answer(quiz_id):
     user = User.query.get(user_id)
     if not user:
         return jsonify({'message': 'User not found'}), 404
+
+    if not user_has_module_access(user.id, quiz.module_id):
+        return jsonify({'message': 'Please select this module in the catalog before taking the quiz.'}), 403
 
     allowed_time = question.time_limit_seconds or 0
     if not time_expired and time_taken is not None and allowed_time and time_taken > allowed_time:

@@ -19,7 +19,7 @@ const difficultyVariant = {
   hard: 'danger',
 };
 
-const Quiz = ({ user, onQuizComplete }) => {
+const Quiz = ({ user, onQuizComplete, goToModules }) => {
   const userId = user?.id;
   const [quizzes, setQuizzes] = useState([]);
   const [quizzesLoading, setQuizzesLoading] = useState(true);
@@ -40,27 +40,34 @@ const Quiz = ({ user, onQuizComplete }) => {
   const [quizError, setQuizError] = useState('');
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [moduleNotice, setModuleNotice] = useState('');
+
+  const loadQuizzes = async () => {
+    if (!userId) return;
+    setQuizzesLoading(true);
+    setModuleNotice('');
+    setQuizError('');
+    try {
+      const res = await fetch(`${API_BASE}/quizzes?user_id=${userId}`);
+      const data = await res.json();
+      if (res.ok) {
+        setQuizzes(data.quizzes || []);
+        if (!data.quizzes?.length && data.message) {
+          setModuleNotice(data.message);
+        }
+      } else {
+        setQuizError(data.message || 'Unable to load available quizzes.');
+      }
+    } catch (error) {
+      setQuizError('Unable to load available quizzes.');
+    } finally {
+      setQuizzesLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchQuizzes = async () => {
-      setQuizzesLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/quizzes`);
-        const data = await res.json();
-        if (res.ok) {
-          setQuizzes(data.quizzes || []);
-        } else {
-          setQuizError(data.message || 'Unable to load available quizzes.');
-        }
-      } catch (error) {
-        setQuizError('Unable to load available quizzes.');
-      } finally {
-        setQuizzesLoading(false);
-      }
-    };
-
-    fetchQuizzes();
-  }, []);
+    loadQuizzes();
+  }, [userId]);
 
   useEffect(() => {
     if (!currentQuestion) return;
@@ -113,9 +120,7 @@ const Quiz = ({ user, onQuizComplete }) => {
     if (!quiz || !userId) return;
     setLoadingQuestions(true);
     try {
-      const params = new URLSearchParams({
-        user_id: userId,
-      });
+      const params = new URLSearchParams({ user_id: userId });
       if (resetSession) {
         params.append('reset_session', '1');
       }
@@ -263,6 +268,18 @@ const Quiz = ({ user, onQuizComplete }) => {
     <div className="p-4 text-center">
       <h3>Select Quiz Subject</h3>
       <p className="text-muted">Adaptive sessions ramp difficulty based on your performance.</p>
+      {moduleNotice && (
+        <Alert variant="info" className="mt-3">
+          {moduleNotice}
+          {typeof goToModules === 'function' && (
+            <div className="mt-2">
+              <Button variant="primary" onClick={goToModules}>
+                Go to Modules
+              </Button>
+            </div>
+          )}
+        </Alert>
+      )}
       {quizzesLoading ? (
         <div className="mt-4">
           <Spinner animation="border" role="status" />
@@ -274,22 +291,37 @@ const Quiz = ({ user, onQuizComplete }) => {
             <Card key={quiz.id} className="p-3 shadow-sm" style={{ width: '280px' }}>
               <Card.Title>{quiz.title}</Card.Title>
               <Card.Text className="text-muted small">{quiz.description}</Card.Text>
-              <Card.Text className="fw-semibold">{quiz.question_count} questions available</Card.Text>
+              <Card.Text className="fw-semibold">
+                {quiz.question_count} questions · {quiz.module_title || 'Module'}
+              </Card.Text>
               <Button variant="primary" onClick={() => startQuiz(quiz)}>
                 Start Adaptive Quiz
               </Button>
             </Card>
           ))}
-          {!quizzes.length && (
+          {!quizzes.length && !moduleNotice && (
             <Card className="p-4 shadow-sm">
-              <Card.Text>No quizzes found. Seed the database to continue.</Card.Text>
+              <Card.Text>No quizzes available. Please add question pools.</Card.Text>
             </Card>
           )}
         </div>
       )}
+      <div className="mt-3">
+        <Button variant="outline-secondary" size="sm" onClick={loadQuizzes} disabled={quizzesLoading}>
+          Refresh Quizzes
+        </Button>
+      </div>
       {quizError && <Alert variant="danger" className="mt-3">{quizError}</Alert>}
     </div>
   );
+
+  if (!userId) {
+    return (
+      <div className="p-4 text-center">
+        <Alert variant="warning">Please log in to access quizzes.</Alert>
+      </div>
+    );
+  }
 
   if (!selectedQuiz) {
     return renderQuizSelection();

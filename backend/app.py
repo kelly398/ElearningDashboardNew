@@ -35,6 +35,10 @@ SESSION_QUESTION_LIMIT = 5
 AVAILABLE_DIFFICULTIES = ['easy', 'medium', 'hard']
 FORUM_TOPICS = ['General', 'Cloud Computing', 'Web Design with JavaScript', 'Data Structures', 'Deep Learning']
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'}), 200
+
 QUESTION_POOL_SEED = [
     {
         'title': 'Cloud Computing',

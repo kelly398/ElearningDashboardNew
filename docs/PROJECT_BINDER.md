@@ -158,4 +158,3 @@ Key differentiators:
 - **Technical Owner:** cK
 - **Support:** Use GitHub issues or Slack channel `#elearning-dashboard`.
 
-Keep this binder updated whenever deployments or architecture decisions change.

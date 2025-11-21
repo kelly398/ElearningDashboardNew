@@ -56,6 +56,21 @@ def get_forum_topics():
 def health():
     return jsonify({'status': 'ok'}), 200
 
+# Basic password reset (simplified placeholder)
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip()
+    new_password = data.get('new_password')
+    if not email or not new_password:
+        return jsonify({'message': 'Email and new_password are required'}), 400
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'message': 'If that email exists, you will receive reset instructions'}), 200
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({'message': 'Password reset successfully. You can now log in.'}), 200
+
 def seed_question_pool(force=False):
     """Seed the quiz question pool so every topic has questions available."""
     with app.app_context():

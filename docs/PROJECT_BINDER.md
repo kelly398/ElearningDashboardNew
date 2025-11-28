@@ -156,5 +156,7 @@ Key differentiators:
 
 - **Suomayh's_Group** Suomayh's_Group
 - **Technical Owner:** cK
+- **Product Owner:** _Suomayh's_Group_
+- **Technical Owner:** _cK_
 - **Support:** Use GitHub issues or Slack channel `#elearning-dashboard`.
 
